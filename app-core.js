@@ -221,11 +221,7 @@ function staffNamesForPicker(){
 async function loadBranding(){
   var d=await getSafe(DB.collection('meta').doc('branding').get(),'branding');
   if(d&&d.exists)Object.assign(BRAND,d.data());
-  var root=document.documentElement.style;
-  if(/^#[0-9a-f]{6}$/i.test(BRAND.colorMid||''))root.setProperty('--accent',BRAND.colorMid);
-  if(/^#[0-9a-f]{6}$/i.test(BRAND.colorDark||''))root.setProperty('--accent-dark',BRAND.colorDark);
-  var nm=BRAND.name||'Eco Air';
-  ['loginBrand'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=nm;});
+  /* v2 keeps its own green to match the logo; the old portal's Branding colours aren't applied here. */
 }
 
 /* ───────────────────────── sign in ───────────────────────── */

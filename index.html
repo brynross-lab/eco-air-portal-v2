@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#1b5e38">
+<meta name="theme-color" content="#033824">
 <meta name="robots" content="noindex">
 <title>Eco Air Staff Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -20,9 +20,9 @@
 
 <!-- Sign in -->
 <section id="login" class="login" hidden>
+  <img src="eco-air-logo.png" alt="Eco Air Mechanical" class="login-logo" width="560" height="166">
   <form class="login-card" onsubmit="event.preventDefault();App.login()">
-    <div class="login-brand" id="loginBrand">Eco Air</div>
-    <h1>Staff portal</h1>
+    <h1>Staff sign in</h1>
     <label class="field">Username<input id="lgUser" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
     <label class="field">Password<input id="lgPass" type="password" autocomplete="current-password" required></label>
     <p class="err" id="lgErr" role="alert" hidden></p>
@@ -33,8 +33,8 @@
 
 <!-- Loading -->
 <section id="boot" class="boot">
-  <div class="boot-mark">Eco Air</div>
-  <p class="muted" id="bootMsg">Connecting…</p>
+  <img src="eco-air-logo.png" alt="Eco Air Mechanical" class="login-logo" width="560" height="166">
+  <p class="boot-msg" id="bootMsg">Connecting…</p>
 </section>
 
 <!-- App -->

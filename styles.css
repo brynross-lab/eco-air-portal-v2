@@ -1,7 +1,7 @@
 /* Eco Air Portal v2 */
 :root{
   --bg:#EEF1EF;--panel:#FFFFFF;--ink:#17221D;--muted:#5C6963;--line:#D3DAD6;--soft:#F3F6F4;--sep:#E3E9E5;
-  --accent:#1b5e38;--accent-dark:#143f27;--accent-ink:#FFFFFF;--accent-soft:#E3EFE7;
+  --accent:#1b5e38;--accent-dark:#033824;--accent-ink:#FFFFFF;--accent-soft:#E3EFE7;
   --warn:#8A5B00;--warn-bg:#FFF1CC;--ok:#1F6B3F;--ok-bg:#DFF1E6;--bad:#A12F2F;--bad-bg:#FBE4E4;--info:#24527F;--info-bg:#E1ECF7;
   /* lot stages: same colours as the current portal's site map legend */
   --st-none:#B9C0BD;--st-wo:#6B7280;--st-rough:#ea580c;--st-bsmt:#d97706;--st-tie:#2563eb;--st-master:#ca8a04;
@@ -31,10 +31,11 @@ button,input,select,textarea{font:inherit;color:inherit}
 body.ro .sheet{top:var(--ro-h,0px)}
 
 /* boot + login */
-.boot{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px}
-.boot-mark,.login-brand{font-family:"Barlow Semi Condensed",Barlow,system-ui,sans-serif;font-weight:800;font-size:28px;color:var(--accent);border:3px solid var(--accent);border-radius:8px;padding:2px 14px;width:max-content}
-.login{min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px 16px;background:var(--accent-dark)}
-.login-card{background:var(--panel);border-radius:14px;padding:28px 22px;width:100%;max-width:400px;display:flex;flex-direction:column;gap:16px}
+.boot{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:#033824;padding:24px 16px}
+.boot-msg{color:rgba(255,255,255,.75);font-size:15px}
+.login-logo{display:block;width:min(300px,72vw);height:auto}
+.login{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;padding:32px 16px;background:#033824}
+.login-card{background:var(--panel);border-radius:16px;padding:28px 22px;width:100%;max-width:400px;display:flex;flex-direction:column;gap:16px;box-shadow:0 12px 40px rgba(0,0,0,.25)}
 .login-card h1{font-size:26px}
 .err{background:var(--bad-bg);color:var(--bad);padding:10px 12px;border-radius:8px;font-weight:600;font-size:15px}
 

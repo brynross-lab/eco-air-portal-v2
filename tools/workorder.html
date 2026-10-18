@@ -352,6 +352,7 @@ function toggleBranding(){
   <div class="tdv"></div>
   <div class="tt">Work Order Builder</div>
   <div class="ta">
+    <button class="btn bw" onclick="openDrawModal()" style="background:#1b5e38;color:#fff;border-color:#1b5e38">🤖 AI Plan Reader</button>
     <button class="btn bw" onclick="resetForm()">&#8634; New</button>
   </div>
 </div>
@@ -1860,6 +1861,198 @@ function init(){
   addHour();calc();renderSWOList();
 }
 init();
+</script>
+
+<!-- ── AI Plan Reader for Work Orders ─────────────────────────────────────── -->
+<div id="drawModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10000;align-items:center;justify-content:center;padding:16px">
+  <div style="background:#fff;border-radius:14px;padding:20px;width:100%;max-width:640px;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:inherit">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-size:16px;font-weight:700;color:#1b5e38">🤖 AI Plan Reader</div>
+      <button onclick="closeDrawModal()" style="background:none;border:none;font-size:22px;color:#aaa;cursor:pointer;padding:0 4px;line-height:1">✕</button>
+    </div>
+    <div style="margin-bottom:12px;font-size:12px;color:#374151">Upload the heating drawing PDF. AI (Claude) reads the selected sheets, learns from your saved Work Orders, and fills in the counts. AI can make mistakes: review every line before you save.</div>
+    <div onclick="document.getElementById('drawFileIn').click()"
+      style="border:2px dashed #d1d5db;border-radius:8px;padding:20px;text-align:center;cursor:pointer;background:#fafafa;margin-bottom:12px"
+      ondragover="event.preventDefault();this.style.borderColor='#1b5e38'" ondragleave="this.style.borderColor='#d1d5db'"
+      ondrop="event.preventDefault();this.style.borderColor='#d1d5db';if(event.dataTransfer.files[0])drawLoadFile(event.dataTransfer.files[0])">
+      <div style="font-size:13px;font-weight:600;color:#374151">Drop drawing PDF here or click to browse</div>
+      <div style="font-size:11px;color:#9ca3af;margin-top:3px">PDF, or JPG/PNG of a single sheet</div>
+      <input id="drawFileIn" type="file" accept="application/pdf,image/png,image/jpeg" style="display:none" onchange="if(this.files[0])drawLoadFile(this.files[0])">
+    </div>
+    <div id="drawPages" style="display:none;margin-bottom:12px">
+      <div style="font-size:11px;color:#6b7280;margin-bottom:6px">Untick sheets that aren't part of this house (optional plans are usually left out automatically).</div>
+      <div id="drawThumbs" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px"></div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button id="drawBtn" onclick="drawRun()" disabled
+        style="background:#1b5e38;color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;flex-shrink:0;opacity:.5">🤖 Build Work Order with AI</button>
+      <div id="drawStatus" style="font-size:11px;color:#6b7280;flex:1;min-width:180px"></div>
+    </div>
+    <div id="drawApply" style="display:none;margin-top:12px;gap:8px;flex-wrap:wrap">
+      <button onclick="drawApply('rough')" style="background:#fff;color:#1b5e38;border:1.5px solid #1b5e38;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer">Fill Rough-In</button>
+      <button onclick="drawApply('bsmt')" style="background:#fff;color:#1b5e38;border:1.5px solid #1b5e38;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer">Fill Basement</button>
+    </div>
+    <div id="drawFlags" style="display:none;margin-top:14px;padding:10px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;font-size:12px;color:#7c2d12"></div>
+  </div>
+</div>
+<script>
+(function(){
+var DRAW_GUIDE="You are building an Eco Air Mechanical HVAC Master from a heating drawing set. A Master is the complete sheet metal measure for one house model: every duct, pipe, fitting, boot and take-off the shop and installers need. The attached images are the sheets of one drawing set, in order. Drawings are by McCallum HVAC Design (Ontario).\n\nHOW TO READ THE DRAWINGS\n- Title block: MODEL (house model), HEATING UNIT, MODEL # (furnace), TONS, BUILDER, SITE. Schedule block bottom-left: # S/A, # R/A, # FANS per floor (3RD, 2ND, 1ST, B) and TOTAL.\n- First check all sheets are the same model and equipment. If not, read only the sheets that match the first sheet and flag the rest.\n- \"OPTIONAL PLANS\" sheets show either/or alternatives. Do not add them into the Master. Note them in flags.\n- Supply trunks are heavy lines from the furnace, labelled like \"B1-16X8\" (trunk B1, 16x8). \"OR 18X10\" is an alternate size: use the first size. \"RISER\" marks a trunk going up a floor. Letter groups are zones; \"LZP\" or zone notes mean a zoned system.\n- Numbered squares are supply outlets. Default branch is 4\"x10\" boot to 5\" round unless a size like 6\"\u00d8 is noted. \"L/W\" = low-wall, \"H/W\" = high-wall.\n- Floor-above rule: on any floor's sheet, outlets matching that floor's schedule count belong to it. Other plain numbered outlets are registers for the floor above, piped in this floor's ceiling.\n- \"nR\" = return. Circle with X = round return drop (size noted). \"nR/LW 14X8\" or \"nR/HW\" = rectangular low/high-wall return.\n- Scale is in the title block (usually 3/16\"=1'-0\"). Estimate run lengths from the scale.\n- Sheet notes override defaults (e.g. \"ALL SUPPLY RUNS IN THE BASEMENT TO BE 3\"\").\n\n", DRAW_RULES="HOW ECO AIR WRITES A WORK ORDER\n- A Work Order is the union piece-rate labour count for one house: how many of each install task the drawing calls for. Count from the drawing; do not price anything.\n- Rough-In covers the framing-stage work on the upper floors (returns, stacks, wall boots, exhausts, HRV and vent work). Basement covers the basement-stage work (supply and return runs by the floor they serve, low walls, plenum and drop work, furnace set up, zoning, HRV hang and runs).\n- Count supply and return runs by the floor they serve, using the schedule block and the floor-above rule.\n- Use only the item names listed below, spelled exactly. Leave out items that are zero.\n- Options are flat add-ons; list one only when the drawing clearly calls for it.\n- The saved Work Orders below show how Eco Air actually counts. Follow their patterns, especially for items the drawing doesn't show directly.\n- Optional plan sheets are either/or: do not count them. Exhaust fans and dryer vents count only where the item list has a matching task.\n", DRAW_OUT="\nOUTPUT\nReturn ONLY one JSON object, no other text:\n{\"fields\":{\"fm\":\"house model\",\"fb\":\"builder\",\"fp\":\"site\",\"fl\":\"lot if shown\"},\n\"sheets\":[\"M1 Proposed Basement - used\",\"...\"],\n\"rough\":{\"<section id>\":{\"<exact item name>\":qty}},\n\"rough_opts\":[\"<exact option name>\"],\n\"bsmt\":{\"<section id>\":{\"<exact item name>\":qty}},\n\"bsmt_opts\":[\"<exact option name>\"],\n\"flags\":[\"one short line per assumption, estimate or thing to check\"]}\nQuantities are whole numbers.\n";
+var DRAW_MODEL='claude-opus-5-5';
+var SECS={rough:['ra','du','vc1','vc2'],bsmt:['bsa','bra','bec1','bec2']};
+var SEC_NAMES={ra:'Return air',du:'Ductwork',vc1:'Vents & exhausts',vc2:'Vents, HRV & extras',bsa:'Supply air',bra:'Return air',bec1:'Extras',bec2:'Extras (more)'};
+var _pages=[],_pdfLib=null,_res=null;
+
+function aiHeaders(){var h={'content-type':'application/json'};try{var u=window.parent&&window.parent.CURRENT_USER;if(u&&u.username&&u.passwordHash){h['x-ea-user']=u.username;h['x-ea-key']=u.passwordHash;}}catch(e){}return h;}
+window.openDrawModal=function(){document.getElementById('drawModal').style.display='flex';};
+window.closeDrawModal=function(){document.getElementById('drawModal').style.display='none';};
+function st(t,c){var s=document.getElementById('drawStatus');s.textContent=t;s.style.color=c||'#6b7280';}
+function btnOn(on){var b=document.getElementById('drawBtn');b.disabled=!on;b.style.opacity=on?'1':'.5';b.style.cursor=on?'pointer':'default';}
+function esc2(s){return String(s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+function loadPdfLib(){
+  if(_pdfLib)return Promise.resolve(_pdfLib);
+  return new Promise(function(ok,bad){
+    var s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload=function(){window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';_pdfLib=window.pdfjsLib;ok(_pdfLib);};
+    s.onerror=function(){bad(new Error('Could not load the PDF reader. Check your internet connection.'));};
+    document.head.appendChild(s);
+  });
+}
+function jpeg(c){return c.toDataURL('image/jpeg',0.72);}
+function fitCanvas(src,maxEdge){var k=Math.min(1,maxEdge/Math.max(src.width,src.height));var c=document.createElement('canvas');c.width=Math.round(src.width*k);c.height=Math.round(src.height*k);var x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(src,0,0,c.width,c.height);return c;}
+function renderThumbs(){
+  var w=document.getElementById('drawThumbs');w.innerHTML='';
+  _pages.forEach(function(p,i){
+    var d=document.createElement('label');
+    d.style.cssText='display:block;border:1px solid #e5e7eb;border-radius:6px;padding:4px;cursor:pointer;font-size:11px;color:#374151;text-align:center';
+    d.innerHTML='<img src="'+p.thumb+'" style="width:100%;display:block;border-radius:3px;margin-bottom:3px"><input type="checkbox" '+(p.on?'checked':'')+'> Sheet '+(i+1);
+    d.querySelector('input').onchange=function(e){p.on=e.target.checked;btnOn(_pages.some(function(q){return q.on;}));};
+    w.appendChild(d);
+  });
+  document.getElementById('drawPages').style.display=_pages.length?'block':'none';
+}
+window.drawLoadFile=async function(file){
+  _pages=[];btnOn(false);document.getElementById('drawFlags').style.display='none';document.getElementById('drawApply').style.display='none';
+  try{
+    if(file.type==='application/pdf'){
+      st('Opening PDF…');
+      var lib=await loadPdfLib();
+      var pdf=await lib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+      for(var n=1;n<=pdf.numPages;n++){
+        st('Preparing sheet '+n+' of '+pdf.numPages+'…');
+        var page=await pdf.getPage(n),v1=page.getViewport({scale:1}),vp=page.getViewport({scale:1600/Math.max(v1.width,v1.height)});
+        var c=document.createElement('canvas');c.width=Math.round(vp.width);c.height=Math.round(vp.height);
+        var x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);
+        await page.render({canvasContext:x,viewport:vp}).promise;
+        _pages.push({canvas:c,thumb:jpeg(fitCanvas(c,300)),on:true});
+      }
+    }else if(/^image\//.test(file.type)){
+      var img=new Image();img.src=URL.createObjectURL(file);await img.decode();
+      var c2=fitCanvas(img,1600);_pages.push({canvas:c2,thumb:jpeg(fitCanvas(c2,300)),on:true});
+    }else throw new Error('Use a PDF, JPG or PNG.');
+    renderThumbs();btnOn(true);st(_pages.length+' sheet'+(_pages.length>1?'s':'')+' ready.');
+  }catch(e){st('Error: '+e.message,'#dc2626');}
+};
+
+function rowName(row){var n=row.querySelector('.item-name');return n?n.textContent.trim():'';}
+function itemCatalog(){
+  var out='';
+  ['rough','bsmt'].forEach(function(t){
+    out+='\n'+(t==='rough'?'ROUGH-IN':'BASEMENT')+' ITEMS (key "'+t+'"):';
+    SECS[t].forEach(function(sid){
+      var names=[];document.querySelectorAll('#'+sid+' .item-row').forEach(function(r){var n=rowName(r);if(n)names.push(n);});
+      out+='\n  section "'+sid+'" ('+SEC_NAMES[sid]+'): '+names.join(' | ');
+    });
+    var opts=(t==='rough'?ROUGH_O:BSMT_O).map(function(o){return o.n;});
+    out+='\n  options "'+t+'_opts": '+opts.join(' | ');
+  });
+  return out;
+}
+async function savedWOExamples(){
+  try{
+    if(!window._ecoDB)return '';
+    var snap=await window._ecoDB.collection('saved_workorder').orderBy('_savedAt','desc').limit(60).get();
+    var ex=[];
+    snap.forEach(function(doc){
+      var d=doc.data(),s=d.snapshot||{},t=s.type||d.type;
+      if((t!=='rough'&&t!=='bsmt')||!s.rows)return;
+      var parts=[];
+      (SECS[t]||[]).forEach(function(sid){
+        var m=s.rows[sid]||{};
+        Object.keys(m).forEach(function(i){var q=parseInt(m[i]);var row=document.getElementById(sid+i);if(q>0&&row)parts.push(rowName(row)+' '+q);});
+      });
+      var optArr=t==='rough'?ROUGH_O:BSMT_O;
+      (s.opts||[]).forEach(function(id){var o=optArr.find(function(x){return x.id===id;});if(o)parts.push('[option] '+o.n);});
+      if(parts.length>=3)ex.push('\nSAVED '+(t==='rough'?'ROUGH-IN':'BASEMENT')+' WO '+(d.num||doc.id)+' (model '+(s.fm||'?')+', builder '+(s.fb||d.builder||'?')+'): '+parts.join('; '));
+    });
+    var r=ex.filter(function(x){return x.indexOf('ROUGH-IN')>0;}).slice(0,4),b=ex.filter(function(x){return x.indexOf('BASEMENT')>0;}).slice(0,4);
+    return r.concat(b).join('');
+  }catch(e){console.warn('[AIPlanReader] saved WOs not loaded',e);return '';}
+}
+async function callClaude(body){
+  var urls=['/api/claude-proxy','/.netlify/functions/claude-proxy'],last;
+  for(var i=0;i<urls.length;i++){
+    var r;try{r=await fetch(urls[i],{method:'POST',headers:aiHeaders(),body:JSON.stringify(body)});}catch(e){last=e;continue;}
+    if(r.status===404){last=new Error('AI proxy not found');continue;}
+    var d=await r.json().catch(function(){return {};});
+    if(!r.ok)throw new Error((d.error&&d.error.message)||('AI error '+r.status));
+    return d;
+  }
+  throw last||new Error('Could not reach the AI proxy');
+}
+window.drawRun=async function(){
+  var sel=_pages.filter(function(p){return p.on;});if(!sel.length)return;
+  btnOn(false);document.getElementById('drawFlags').style.display='none';document.getElementById('drawApply').style.display='none';
+  try{
+    st('Loading your saved Work Orders to learn from…');
+    var learned=await savedWOExamples();
+    var edge=1400,imgs;
+    do{imgs=sel.map(function(p){return jpeg(fitCanvas(p.canvas,edge)).split(',')[1];});edge-=200;}while(imgs.join('').length>3400000&&edge>=800);
+    var prompt=DRAW_GUIDE+DRAW_RULES+itemCatalog()+(learned?'\n\nSAVED WORK ORDERS (how Eco Air actually counts):'+learned+'\n':'\n\n(No saved Work Orders available. Count from the drawing and flag your assumptions.)\n')+DRAW_OUT;
+    var content=imgs.map(function(b){return {type:'image',source:{type:'base64',media_type:'image/jpeg',data:b}};});
+    content.push({type:'text',text:prompt});
+    var t0=Date.now(),tick=setInterval(function(){st('AI is reading '+sel.length+' sheet'+(sel.length>1?'s':'')+'… '+Math.round((Date.now()-t0)/1000)+'s (1 to 3 minutes)');},1000);
+    var data;try{data=await callClaude({model:DRAW_MODEL,max_tokens:32000,messages:[{role:'user',content:content}]});}finally{clearInterval(tick);}
+    var text=(data.content||[]).filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('');
+    var m=text.match(/\{[\s\S]*\}/);if(!m)throw new Error('No Work Order came back. Try again.');
+    _res=JSON.parse(m[0]);
+    var f=_res.fields||{};
+    ['fm','fb','fp','fl'].forEach(function(k){var el=document.getElementById(k);if(el&&f[k]&&!el.value)el.value=f[k];});
+    var t=(cType==='bsmt')?'bsmt':'rough';
+    var n=drawApply(t,true);
+    var sh=_res.sheets||[],flags=_res.flags||[];
+    var fl=document.getElementById('drawFlags');
+    fl.innerHTML='<div style="font-weight:700;margin-bottom:6px">AI read: check before saving</div>'+
+      (sh.length?'<div style="margin-bottom:6px;color:#374151">'+sh.map(esc2).join('<br>')+'</div>':'')+
+      '<ul style="margin:0;padding-left:18px">'+flags.map(function(x){return '<li>'+esc2(x)+'</li>';}).join('')+'</ul>';
+    fl.style.display='block';document.getElementById('drawApply').style.display='flex';
+    st('✓ AI filled '+n+' '+(t==='rough'?'Rough-In':'Basement')+' items'+(learned?' using your saved Work Orders':'')+'. Use the buttons below to fill the other phase.','#16a34a');
+  }catch(e){st('Error: '+e.message,'#dc2626');console.error('[AIPlanReader]',e);}
+  finally{btnOn(true);}
+};
+window.drawApply=function(t,quiet){
+  if(!_res)return 0;
+  if(cType!==t)sw(t);
+  var data=_res[t]||{},n=0;
+  SECS[t].forEach(function(sid){
+    var want=data[sid]||{},lc={};
+    Object.keys(want).forEach(function(k){lc[k.trim().toLowerCase()]=want[k];});
+    document.querySelectorAll('#'+sid+' .item-row').forEach(function(row){
+      var q=parseInt(lc[rowName(row).toLowerCase()])||0;
+      var inp=row.querySelector('input');if(inp){inp.value=q;row.dataset.qty=q;if(q>0)n++;}
+    });
+  });
+  var optArr=t==='rough'?ROUGH_O:BSMT_O,picked=(_res[t+'_opts']||[]).map(function(s){return String(s).trim().toLowerCase();});
+  optArr.forEach(function(o){
+    var cb=document.getElementById(o.id),card=document.getElementById('opt'+o.id);if(!cb)return;
+    var on=picked.indexOf(String(o.n).toLowerCase())>=0;cb.checked=on;if(card)card.classList.toggle('active',on);if(on)n++;
+  });
+  calc();
+  if(!quiet)st('✓ AI filled '+n+' '+(t==='rough'?'Rough-In':'Basement')+' items. Review, then Save.','#16a34a');
+  return n;
+};
+})();
 </script>
 </body>
 </html>

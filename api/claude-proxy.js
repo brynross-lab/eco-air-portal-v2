@@ -1,20 +1,24 @@
 /* Eco Air Portal v2 - photo reader for the Measure tool ("Read Photo").
  *
- * The Measure tool posts a photo of a handwritten measure sheet here (the old portal used a
- * Netlify function at /.netlify/functions/claude-proxy; vercel.json points that address here).
- * This function checks the caller is a signed-in staff member, then forwards the photo to
- * Claude and returns Claude's reply unchanged.
+ * Used by the builders' AI features: Read Photo (handwritten measure sheet) and the
+ * AI Plan Reader (heating drawing -> Master or Work Order). The old Netlify address
+ * /.netlify/functions/claude-proxy is pointed here by vercel.json.
+ * This function checks the caller is a signed-in staff member, then forwards the images
+ * and instructions to Claude and returns Claude's reply unchanged.
  *
  * Vercel environment variables:
  *   ANTHROPIC_API_KEY   required. Your Claude API key (console.anthropic.com).
- *   CLAUDE_MODEL        optional. Defaults to claude-sonnet-5-5.
+ *   CLAUDE_MODEL        optional. Model used when the tool asks for one that isn't on the allowed list.
  *   FIREBASE_PROJECT_ID optional. Defaults to ecoair-portal.
  *   FIREBASE_API_KEY    optional. Defaults to the portal's web API key.
  */
 const DEFAULT_MODEL = 'claude-sonnet-5-5';
 const PROJECT = process.env.FIREBASE_PROJECT_ID || 'ecoair-portal';
 const FB_KEY = process.env.FIREBASE_API_KEY || 'AIzaSyDd96GHh5CP3SFyK5mjyhn_7XdPqV1h2AI';
-const MAX_TOKENS = 4096;
+const MODELS = new Set(['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-sonnet-4-6']); // same list as the live portal
+const MAX_TOKENS = 32000;   // the Plan Reader writes a full Master
+const MAX_PARTS = 40;       // drawing sheets + instructions
+const MAX_TEXT = 200000;
 
 function fail(res, status, message) {
   res.status(status).json({ type: 'error', error: { type: 'portal_error', message } });
@@ -32,14 +36,14 @@ async function isStaff(user, key) {
   return !!(f.passwordHash && f.passwordHash.stringValue === key.toLowerCase());
 }
 
-// Only pass through one user message made of images and text (what the Measure tool sends).
+// Only pass through one user message made of images and text (what the builders send).
 function cleanMessages(messages) {
   if (!Array.isArray(messages) || messages.length !== 1) return null;
   const m = messages[0];
-  if (!m || m.role !== 'user' || !Array.isArray(m.content) || !m.content.length || m.content.length > 6) return null;
+  if (!m || m.role !== 'user' || !Array.isArray(m.content) || !m.content.length || m.content.length > MAX_PARTS) return null;
   const content = [];
   for (const part of m.content) {
-    if (part && part.type === 'text' && typeof part.text === 'string' && part.text.length < 20000) {
+    if (part && part.type === 'text' && typeof part.text === 'string' && part.text.length < MAX_TEXT) {
       content.push({ type: 'text', text: part.text });
     } else if (part && part.type === 'image' && part.source && part.source.type === 'base64' &&
       /^image\/(jpeg|png|gif|webp)$/.test(part.source.media_type) && typeof part.source.data === 'string') {
@@ -60,7 +64,7 @@ module.exports = async function handler(req, res) {
     let body = req.body;
     if (typeof body === 'string') { try { body = JSON.parse(body); } catch (e) { body = null; } }
     const messages = cleanMessages(body && body.messages);
-    if (!messages) return fail(res, 400, 'That request isn\'t a measure sheet photo.');
+    if (!messages) return fail(res, 400, 'That request isn\'t something the builders send.');
 
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -70,7 +74,7 @@ module.exports = async function handler(req, res) {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: process.env.CLAUDE_MODEL || DEFAULT_MODEL,
+        model: MODELS.has(body.model) ? body.model : (process.env.CLAUDE_MODEL || DEFAULT_MODEL),
         max_tokens: Math.min(parseInt(body.max_tokens, 10) || 2048, MAX_TOKENS),
         messages
       })

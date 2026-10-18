@@ -23,13 +23,37 @@ function whenToolReady(fn){
   if(e.ready)setTimeout(fn,60);else (e.queue=e.queue||[]).push(fn);
 }
 
+/* Read-only database view for the builders' AI Plan Reader (reads only; it has no write methods). */
+function eaReadOnlyDB(){
+  function q(ref){return {
+    orderBy:function(){return q(ref.orderBy.apply(ref,arguments));},
+    limit:function(){return q(ref.limit.apply(ref,arguments));},
+    where:function(){return q(ref.where.apply(ref,arguments));},
+    get:function(){return ref.get();},
+    doc:function(id){var d=ref.doc(id);return {get:function(){return d.get();}};}
+  };}
+  return {collection:function(n){return q(DB.collection(n));}};
+}
+window.eaReadOnlyDB=eaReadOnlyDB;
+
 /* ───────────────────────── open a builder ───────────────────────── */
 async function openToolCore(key,title,docType,client,jobId){
   var html;
   try{html=await loadTool(key);}catch(e){showToast('Could not load the '+title+'. Check the connection and try again.',true);return;}
   if(SKINNED[key]){var skin=await loadSkin();if(skin)html=html.replace('</head>','<style id="v2-skin">'+skin+'</style></head>');}
-  if(key==='measure'&&CURRENT_USER){
-    // Read Photo: tell the photo reader who is asking, so only staff can use it.
+  if(key==='measure'||key==='workorder'){
+    // AI Plan Reader: while it runs, lend it a read-only view of the saved Masters / Work Orders
+    // so it can learn from them. The handle is removed again as soon as the read finishes,
+    // so the builder's normal saving still goes through the portal.
+    var lend='<scr'+'ipt>(function(){var run=window.drawRun;if(!run)return;window.drawRun=async function(){'+
+      'var P=window.parent,ro=null;try{ro=P.eaReadOnlyDB&&P.eaReadOnlyDB();}catch(e){}'+
+      'var hadT=typeof _toolDB!=="undefined",a=window._ecoDB,b=hadT?_toolDB:undefined;'+
+      'if(ro){if(!a)window._ecoDB=ro;if(hadT&&!b)_toolDB=ro;}'+
+      'try{return await run.apply(this,arguments);}finally{if(window._ecoDB===ro)window._ecoDB=a;if(hadT&&_toolDB===ro)_toolDB=b;}};})();</scr'+'ipt>';
+    var at=html.lastIndexOf('</body>');html=at>=0?html.slice(0,at)+lend+html.slice(at):html+lend;
+  }
+  if((key==='measure'||key==='workorder')&&CURRENT_USER){
+    // AI tools: tell the AI proxy who is asking, so only staff can use it.
     var who=JSON.stringify({u:meUser(),k:CURRENT_USER.passwordHash||''}).replace(/</g,'\\u003c');
     html=html.replace('<head>','<head><scr'+'ipt>(function(){var W='+who+',F=window.fetch;window.fetch=function(u,o){try{if(String(u).indexOf("claude-proxy")>=0){o=Object.assign({},o||{});o.headers=Object.assign({},o.headers||{},{"x-ea-user":W.u,"x-ea-key":W.k});}}catch(e){}return F.call(this,u,o);};})();</scr'+'ipt>');
   }

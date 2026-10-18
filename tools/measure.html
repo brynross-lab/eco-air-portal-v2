@@ -138,7 +138,8 @@ input:focus,select:focus{border-color:var(--G);background:#fff}
   <div class="tdv"></div>
   <div class="tt">Measure Tool</div>
   <div class="ta">
-    <button class="btn bw bs" onclick="openDigitizeModal()" style="background:#7c3aed;color:#fff;border-color:#7c3aed">📷 AI Read Photo</button>
+    <button class="btn bw bs" onclick="openDrawModal()" style="background:#1b5e38;color:#fff;border-color:#1b5e38">🤖 AI Plan Reader</button>
+    <button class="btn bw bs" onclick="openDigitizeModal()" style="background:#7c3aed;color:#fff;border-color:#7c3aed">📷 Read Photo</button>
     <button class="btn bw bs" onclick="clearForm()">✕ Clear</button>
     <button class="btn bp" id="pdfBtn" onclick="savePDF()">💾 Save &amp; Download PDF</button>
   </div>
@@ -1660,6 +1661,9 @@ window.addEventListener('resize',fixMobSpacer);
 </div>
 
 <script>
+window.eaAiHeaders=function(){var h={'content-type':'application/json'};try{var u=window.parent&&window.parent.CURRENT_USER;if(u&&u.username&&u.passwordHash){h['x-ea-user']=u.username;h['x-ea-key']=u.passwordHash;}}catch(e){}return h;};
+</script>
+<script>
 (function(){
 var _img64=null,_imgMime=null;
 
@@ -1710,9 +1714,9 @@ window.digitizeRun=async function(){
   var status=document.getElementById('digitizeStatus');
   btn.disabled=true;btn.textContent='Analyzing…';status.textContent='Sending to Claude vision AI…';status.style.color='#6b7280';
   try{
-    var resp=await fetch('/.netlify/functions/claude-proxy',{
+    var resp=await fetch(location.hostname.indexOf('netlify')>=0?'/.netlify/functions/claude-proxy':'/api/claude-proxy',{
       method:'POST',
-      headers:{'content-type':'application/json'},
+      headers:window.eaAiHeaders(),
       body:JSON.stringify({
         model:'claude-sonnet-4-6',
         max_tokens:2048,
@@ -1778,6 +1782,182 @@ window.digitizeRun=async function(){
     btn.disabled=false;btn.textContent='⚡ Digitize Master';_updateBtn();
   }
 };
+})();
+</script>
+
+<!-- ── Read Heating Drawing (AI) ─────────────────────────────────────────── -->
+<div id="drawModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center;padding:16px">
+  <div style="background:#fff;border-radius:14px;padding:20px;width:100%;max-width:640px;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-size:16px;font-weight:700;color:#1b5e38">🤖 AI Plan Reader</div>
+      <button onclick="closeDrawModal()" style="background:none;border:none;font-size:22px;color:#aaa;cursor:pointer;padding:0 4px;line-height:1">✕</button>
+    </div>
+    <div style="margin-bottom:12px;font-size:12px;color:#374151">Upload the heating drawing PDF. AI (Claude) reads the selected sheets, learns from your saved Masters, and fills this form. AI can make mistakes: review every line before you save.</div>
+    <div id="drawDrop" onclick="document.getElementById('drawFileIn').click()"
+      style="border:2px dashed #d1d5db;border-radius:8px;padding:20px;text-align:center;cursor:pointer;background:#fafafa;margin-bottom:12px"
+      ondragover="event.preventDefault();this.style.borderColor='#1b5e38'" ondragleave="this.style.borderColor='#d1d5db'"
+      ondrop="event.preventDefault();this.style.borderColor='#d1d5db';if(event.dataTransfer.files[0])drawLoadFile(event.dataTransfer.files[0])">
+      <div style="font-size:13px;font-weight:600;color:#374151">Drop drawing PDF here or click to browse</div>
+      <div style="font-size:11px;color:#9ca3af;margin-top:3px">PDF, or JPG/PNG of a single sheet</div>
+      <input id="drawFileIn" type="file" accept="application/pdf,image/png,image/jpeg" style="display:none" onchange="if(this.files[0])drawLoadFile(this.files[0])">
+    </div>
+    <div id="drawPages" style="display:none;margin-bottom:12px">
+      <div style="font-size:11px;color:#6b7280;margin-bottom:6px">Untick sheets that aren't part of this Master (optional plans are usually left out automatically).</div>
+      <div id="drawThumbs" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px"></div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button id="drawBtn" onclick="drawRun()" disabled
+        style="background:#1b5e38;color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;flex-shrink:0;opacity:.5">🤖 Build Master with AI</button>
+      <div id="drawStatus" style="font-size:11px;color:#6b7280;flex:1;min-width:180px"></div>
+    </div>
+    <div id="drawFlags" style="display:none;margin-top:14px;padding:10px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;font-size:12px;color:#7c2d12"></div>
+  </div>
+</div>
+<script>
+(function(){
+var DRAW_GUIDE="You are building an Eco Air Mechanical HVAC Master from a heating drawing set. A Master is the complete sheet metal measure for one house model: every duct, pipe, fitting, boot and take-off the shop and installers need. The attached images are the sheets of one drawing set, in order. Drawings are by McCallum HVAC Design (Ontario).\n\nHOW TO READ THE DRAWINGS\n- Title block: MODEL (house model), HEATING UNIT, MODEL # (furnace), TONS, BUILDER, SITE. Schedule block bottom-left: # S/A, # R/A, # FANS per floor (3RD, 2ND, 1ST, B) and TOTAL.\n- First check all sheets are the same model and equipment. If not, read only the sheets that match the first sheet and flag the rest.\n- \"OPTIONAL PLANS\" sheets show either/or alternatives. Do not add them into the Master. Note them in flags.\n- Supply trunks are heavy lines from the furnace, labelled like \"B1-16X8\" (trunk B1, 16x8). \"OR 18X10\" is an alternate size: use the first size. \"RISER\" marks a trunk going up a floor. Letter groups are zones; \"LZP\" or zone notes mean a zoned system.\n- Numbered squares are supply outlets. Default branch is 4\"x10\" boot to 5\" round unless a size like 6\"\u00d8 is noted. \"L/W\" = low-wall, \"H/W\" = high-wall.\n- Floor-above rule: on any floor's sheet, outlets matching that floor's schedule count belong to it. Other plain numbered outlets are registers for the floor above, piped in this floor's ceiling.\n- \"nR\" = return. Circle with X = round return drop (size noted). \"nR/LW 14X8\" or \"nR/HW\" = rectangular low/high-wall return.\n- Scale is in the title block (usually 3/16\"=1'-0\"). Estimate run lengths from the scale.\n- Sheet notes override defaults (e.g. \"ALL SUPPLY RUNS IN THE BASEMENT TO BE 3\"\").\n\nHOW ECO AIR WRITES A MASTER\n- Take-offs: one per supply branch, by branch diameter. TTO = take-off on top of trunk (most runs). STO = side take-off.\n- Elbows: by diameter, about 2 per round run, more on long or offset runs.\n- Pipe: total linear feet per diameter, rounded up to the nearest 10 ft.\n- Duct: total linear feet per rectangular size including trunks, the supply plenum and the return air, rounded up to the nearest 2.5 ft.\n- Block ends: one per trunk end, by trunk size.\n- Fittings: plenum take-offs (Rise PTO with Wide or Narrow side), Side 90 / Stack 90 turns, Taper (Flat) where a trunk reduces, Zoning Y where a zoned plenum splits, RA Boot for the return air at the furnace.\n- Boots: by size and type (AB, EB or UB). Exhaust fans are by others and are not in the Master.\n- Extras: R/A Frame, Reducer, Flex, S-Cleat, D-Cleat, Joist Lining (panned joist returns), Damper, Custom.\n- Pipe sizes the form accepts: 4,5,6,7,8,9,10,12. Duct widths: even 6-40. Duct heights: even 6-24. If the drawing needs a size outside these, use the nearest one and flag it.\n- Lengths tend to come out long when scaled from images. Check the scale in the title block and keep branch runs realistic: in the worked example, 26 supplies used 280 ft of branch pipe in total (about 11 ft per run).\n- Include the furnace connection: the supply plenum and return drop at the unit and an RA Boot, sized for the furnace (see the worked example).\n- Balancing dampers, zone dampers, zone controls, HRV ducting and exhaust fans are not listed on the Master. Do not add them; mention them in flags if shown.\n";
+var DRAW_EXAMPLE="\nWORKED EXAMPLE: the real Master Eco Air built for model TBSD4020C (Caivan, Caledon; 26 supplies, 2 zones). Use it to learn the method and proportions, never its numbers.\nFittings: Rise PTO Narrow Side 28x8 x1; Rise PTO Wide Side 8x8 x1; Stack 90 A 14x8 B 14x8 x1; Taper (Flat) A 16x8 B 8x8 x1; Taper (Flat) A 30x8 B 18x8 x1; RA Boot 24x10 x1; Side 90 A 16x8 B 16x8 x1; Side 90 A 8x8 B 8x8 x1; Zoning Y A 14x8 B 16x8 C 28x8 x1.\nDuct (LF): 20x16 7.5; 24x10 7.5; 30x8 10; 18x8 12.5; 16x8 25; 14x8 5; 8x8 30.\nBlock ends: 20x16 1; 30x8 1; 18x8 1; 8x8 2.\nPipe (LF): 7\" 30; 6\" 50; 5\" 200.\nElbows: 7\" 6; 6\" 12; 5\" 36.\nBoots: 5\" AB 12; 5\" EB 2; 5\" UB 2; 6\" UB 1; 7\" EB 1.\nTake-offs: TTO 7\" 1, 6\" 6, 5\" 16; STO 6\" 3.\nExtras: 5\" Flex 3 (Flex 5ft); R/A Frame 1; Reducer 5\" to 4\" 1; S-Cleat 20; D-Cleat 20; Joist Lining 16\" x4.\n";
+var DRAW_OUT="\nOUTPUT\nReturn ONLY one JSON object, no other text:\n{\"fields\":{\"fmaster\":\"house model\",\"fname\":\"builder\",\"fsite\":\"site\",\"flot\":\"lot if shown\",\"fmodel\":\"house model\",\"ffurnace\":\"furnace model # and tons\",\"fac\":\"AC if shown\"},\n\"sheets\":[\"M1 Proposed Basement - used\", \"...\"],\n\"items\":[\n {\"container\":\"fitting-list\",\"type\":\"fitting\",\"qty\":1,\"vType\":\"Side 90|Stack 90|Side 45|Stack 45|Rise PTO|Flat PTO|Y-Branch|Semi-Y|Zoning Y|Taper (Centre)|Taper (Flat)|Riser|RA Boot|Custom\",\"v1\":\"A width or Y size A\",\"v2\":\"A height or Y size B\",\"v3\":\"Y size C, or Wide/Narrow for PTO\",\"v4\":\"B width\",\"v5\":\"B height\"},\n {\"container\":\"duct-list\",\"type\":\"duct\",\"qty\":1,\"v1\":\"width\",\"v2\":\"height\",\"v3\":\"length ft\"},\n {\"container\":\"duct-list\",\"type\":\"blockend\",\"qty\":1,\"v1\":\"width\",\"v2\":\"height\"},\n {\"container\":\"pipe-list\",\"type\":\"pipe\",\"qty\":1,\"v1\":\"diameter\",\"v3\":\"length ft\"},\n {\"container\":\"elbow-list\",\"type\":\"elbow\",\"qty\":6,\"v1\":\"diameter\"},\n {\"container\":\"boot-list\",\"type\":\"boot\",\"qty\":12,\"v1\":\"diameter\",\"v2\":\"AB|EB|UB\"},\n {\"container\":\"takeoff-list\",\"type\":\"takeoff\",\"qty\":16,\"v1\":\"diameter\",\"v2\":\"TTO|STO\"},\n {\"container\":\"extra-list\",\"type\":\"extra\",\"qty\":1,\"v1\":\"Flex 5ft|Flex 10ft|Reducer|Insulated Flex|Damper|S-Cleat|D-Cleat|R/A Frame|Joist Lining|Custom\",\"v2\":\"detail: reducer from size, joist width like 16\\\", damper size like 5\\\", custom text\",\"v3\":\"reducer to size, or joist length 48\\\"\"}],\n\"flags\":[\"one short line per assumption, estimate or thing to check\"]}\nNumbers as plain strings without inch marks for sizes (\"16\", \"8\"). Fitting rect sizes in v1/v2/v4/v5 as widths/heights (always give both A and B for Side 90, Stack 90 and Tapers); Y sizes in v1/v2/v3 as text like \"14x8\". One item per distinct size and type, with qty.\n";
+var DRAW_MODEL='claude-opus-5-5';
+var _pages=[],_pdfLib=null;
+
+window.openDrawModal=function(){document.getElementById('drawModal').style.display='flex';};
+window.closeDrawModal=function(){document.getElementById('drawModal').style.display='none';};
+function st(t,c){var s=document.getElementById('drawStatus');s.textContent=t;s.style.color=c||'#6b7280';}
+function btnOn(on){var b=document.getElementById('drawBtn');b.disabled=!on;b.style.opacity=on?'1':'.5';b.style.cursor=on?'pointer':'default';}
+
+function loadPdfLib(){
+  if(_pdfLib)return Promise.resolve(_pdfLib);
+  return new Promise(function(ok,bad){
+    var s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload=function(){window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';_pdfLib=window.pdfjsLib;ok(_pdfLib);};
+    s.onerror=function(){bad(new Error('Could not load the PDF reader. Check your internet connection.'));};
+    document.head.appendChild(s);
+  });
+}
+function canvasJpeg(c){return c.toDataURL('image/jpeg',0.72);}
+function fitCanvas(src,maxEdge){
+  var k=Math.min(1,maxEdge/Math.max(src.width,src.height));
+  var c=document.createElement('canvas');c.width=Math.round(src.width*k);c.height=Math.round(src.height*k);
+  var x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(src,0,0,c.width,c.height);return c;
+}
+function renderThumbs(){
+  var w=document.getElementById('drawThumbs');w.innerHTML='';
+  _pages.forEach(function(p,i){
+    var d=document.createElement('label');
+    d.style.cssText='display:block;border:1px solid #e5e7eb;border-radius:6px;padding:4px;cursor:pointer;font-size:11px;color:#374151;text-align:center';
+    d.innerHTML='<img src="'+p.thumb+'" style="width:100%;display:block;border-radius:3px;margin-bottom:3px"><input type="checkbox" '+(p.on?'checked':'')+'> Sheet '+(i+1);
+    d.querySelector('input').onchange=function(e){p.on=e.target.checked;btnOn(_pages.some(function(q){return q.on;}));};
+    w.appendChild(d);
+  });
+  document.getElementById('drawPages').style.display=_pages.length?'block':'none';
+}
+window.drawLoadFile=async function(file){
+  _pages=[];btnOn(false);document.getElementById('drawFlags').style.display='none';
+  try{
+    if(file.type==='application/pdf'){
+      st('Opening PDF…');
+      var lib=await loadPdfLib();
+      var pdf=await lib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+      for(var n=1;n<=pdf.numPages;n++){
+        st('Preparing sheet '+n+' of '+pdf.numPages+'…');
+        var page=await pdf.getPage(n),v1=page.getViewport({scale:1}),sc=1600/Math.max(v1.width,v1.height),vp=page.getViewport({scale:sc});
+        var c=document.createElement('canvas');c.width=Math.round(vp.width);c.height=Math.round(vp.height);
+        var x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);
+        await page.render({canvasContext:x,viewport:vp}).promise;
+        _pages.push({canvas:c,thumb:canvasJpeg(fitCanvas(c,300)),on:true});
+      }
+    }else if(/^image\//.test(file.type)){
+      var img=new Image();img.src=URL.createObjectURL(file);await img.decode();
+      var c2=fitCanvas(img,1600);_pages.push({canvas:c2,thumb:canvasJpeg(fitCanvas(c2,300)),on:true});
+    }else throw new Error('Use a PDF, JPG or PNG.');
+    renderThumbs();btnOn(true);st(_pages.length+' sheet'+(_pages.length>1?'s':'')+' ready.');
+  }catch(e){st('Error: '+e.message,'#dc2626');}
+};
+
+function itemLine(it){
+  var q=' x'+(it.qty||1);
+  switch(it.type){
+    case 'duct':return 'Duct '+it.v1+'x'+it.v2+' '+(it.v3||'?')+'ft'+q;
+    case 'blockend':return 'Block end '+it.v1+'x'+it.v2+q;
+    case 'pipe':return 'Pipe '+it.v1+'" '+(it.v3||'?')+'ft'+q;
+    case 'pipeblockend':return 'Pipe block end '+it.v1+'"'+q;
+    case 'elbow':return 'Elbow '+it.v1+'"'+q;
+    case 'boot':return 'Boot '+it.v1+'" '+(it.v2||'')+q;
+    case 'takeoff':return (it.v2||'TTO')+' '+it.v1+'"'+q;
+    case 'fitting':return (it.vType||'Fitting')+' '+[it.v1,it.v2,it.v3,it.v4,it.v5].filter(Boolean).join('/')+q;
+    case 'extra':return (it.v1||'Extra')+(it.v2?' '+it.v2:'')+(it.v3?' '+it.v3:'')+q;
+  }
+  return '';
+}
+async function savedMasterExamples(){
+  try{
+    if(!_toolDB)return '';
+    var snap=await _toolDB.collection('saved_masters').limit(40).get();
+    var docs=[];snap.forEach(function(d){var x=d.data();var fd=x&&x.snapshot&&x.snapshot._formData;if(fd&&fd.items&&fd.items.length>5)docs.push(x);});
+    docs.sort(function(a,b){return String(b._savedAt||'').localeCompare(String(a._savedAt||''));});
+    return docs.slice(0,4).map(function(x){
+      var s=x.snapshot,items=s._formData.items.map(itemLine).filter(Boolean).join('; ');
+      return '\nSAVED MASTER '+(s.fmaster||x._key)+' (model '+(s.fmodel||'?')+', builder '+(x.builder||'?')+'): '+items;
+    }).join('');
+  }catch(e){console.warn('[ReadDrawing] could not load saved masters',e);return '';}
+}
+async function callClaude(body){
+  var urls=['/api/claude-proxy','/.netlify/functions/claude-proxy'],last;
+  for(var i=0;i<urls.length;i++){
+    var r;try{r=await fetch(urls[i],{method:'POST',headers:window.eaAiHeaders(),body:JSON.stringify(body)});}catch(e){last=e;continue;}
+    if(r.status===404){last=new Error('AI proxy not found');continue;}
+    var d=await r.json().catch(function(){return {};});
+    if(!r.ok)throw new Error((d.error&&d.error.message)||('AI error '+r.status));
+    return d;
+  }
+  throw last||new Error('Could not reach the AI proxy');
+}
+window.drawRun=async function(){
+  var sel=_pages.filter(function(p){return p.on;});if(!sel.length)return;
+  var hasContent=document.querySelectorAll('.item-row').length>0;
+  if(hasContent&&!confirm('This replaces the items currently on the form with the drawing read. Continue?'))return;
+  btnOn(false);document.getElementById('drawFlags').style.display='none';
+  try{
+    st('Loading your saved Masters to learn from…');
+    var learned=await savedMasterExamples();
+    var edge=1400,imgs;
+    do{ imgs=sel.map(function(p){return canvasJpeg(fitCanvas(p.canvas,edge)).split(',')[1];});
+        edge-=200; } while(imgs.join('').length>3400000&&edge>=800);
+    var prompt=DRAW_GUIDE+DRAW_EXAMPLE+(learned?'\n\nMORE MASTERS ECO AIR HAS SAVED (item lists only, no drawings). Use them to match Eco Air\'s naming, boot types, extras and proportions:'+learned+'\n':'')+DRAW_OUT;
+    var content=imgs.map(function(b){return {type:'image',source:{type:'base64',media_type:'image/jpeg',data:b}};});
+    content.push({type:'text',text:prompt});
+    st('Claude is reading '+sel.length+' sheet'+(sel.length>1?'s':'')+'. This takes 1 to 3 minutes…');
+    var t0=Date.now(),tick=setInterval(function(){st('Claude is reading the drawing… '+Math.round((Date.now()-t0)/1000)+'s');},1000);
+    var data;try{data=await callClaude({model:DRAW_MODEL,max_tokens:32000,messages:[{role:'user',content:content}]});}finally{clearInterval(tick);}
+    var text=(data.content||[]).filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('');
+    var m=text.match(/\{[\s\S]*\}/);if(!m)throw new Error('No Master came back. Try again.');
+    var res=JSON.parse(m[0]);
+    // fill header
+    var f=res.fields||{};
+    ['fmaster','fname','fsite','flot','fmodel','ffurnace','fac'].forEach(function(k){var el=document.getElementById(k);if(el&&f[k]&&!el.value)el.value=f[k];});
+    // fill items through the builder's own loader
+    Object.keys(SEC_META).forEach(function(id){var c=document.getElementById(id);if(c)c.innerHTML='';});
+    var n=0;
+    (res.items||[]).forEach(function(it){
+      if(!it||!document.getElementById(it.container))return;
+      var saved={qty:it.qty||1,v1:String(it.v1??''),v2:String(it.v2??''),v3:String(it.v3??''),v4:String(it.v4??''),v5:String(it.v5??''),vType:it.vType||''};
+      if(/^(Side|Stack) 90$|^Taper/.test(saved.vType)&&!saved.v4){saved.v4=saved.v1;saved.v5=saved.v2;}
+      try{addItem(it.container,it.type,saved);n++;}catch(e){console.warn('[ReadDrawing] skipped',it,e);}
+    });
+    setTimeout(function(){render();},150);
+    var flags=(res.flags||[]).slice(),sh=res.sheets||[];
+    var fl=document.getElementById('drawFlags');
+    fl.innerHTML='<div style="font-weight:700;margin-bottom:6px">AI read: check before saving</div>'+
+      (sh.length?'<div style="margin-bottom:6px;color:#374151">'+sh.map(esc).join('<br>')+'</div>':'')+
+      '<ul style="margin:0;padding-left:18px">'+flags.map(function(x){return '<li>'+esc(x)+'</li>';}).join('')+'</ul>';
+    fl.style.display='block';
+    st('✓ AI filled '+n+' items'+(learned?' using your saved Masters':'')+'. Review the form, then Save.','#16a34a');
+  }catch(e){st('Error: '+e.message,'#dc2626');console.error('[ReadDrawing]',e);}
+  finally{btnOn(true);}
+};
+function esc(s){return String(s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
 })();
 </script>
 </body>

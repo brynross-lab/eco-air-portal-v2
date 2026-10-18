@@ -54,6 +54,21 @@ So that what gets saved is identical to the current portal:
 
 Everything else (`app-*.js`, `styles.css`, `index.html`) is new.
 
+## Read Photo (AI measure sheets)
+
+The Measure tool's **Read Photo** button sends a photo of a handwritten measure sheet to
+Claude, which fills in the form. In v2 this goes through `api/claude-proxy.js`, a small Vercel
+function (the old portal called a Netlify function that doesn't exist on Vercel).
+
+To switch it on, in Vercel → this project → **Settings → Environment Variables** add:
+
+- `ANTHROPIC_API_KEY`: a Claude API key from console.anthropic.com. Required.
+- `CLAUDE_MODEL`: optional, defaults to `claude-sonnet-5-5`.
+
+Then redeploy. Only signed-in staff can use it: each request carries the user's sign-in and the
+function checks it against the `staff` collection before calling Claude. It reads photos and
+fills the form only; nothing is saved until someone saves the measure sheet.
+
 ## Still in the current portal for now
 
 Branding, the price-rate editor, Trash/restore, and merging or renaming builders and sites.

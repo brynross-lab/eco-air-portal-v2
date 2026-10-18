@@ -1,5 +1,11 @@
 {
   "cleanUrls": false,
+  "rewrites": [
+    { "source": "/.netlify/functions/claude-proxy", "destination": "/api/claude-proxy" }
+  ],
+  "functions": {
+    "api/claude-proxy.js": { "maxDuration": 60 }
+  },
   "headers": [
     { "source": "/(.*)", "headers": [
       { "key": "Cache-Control", "value": "no-cache" },

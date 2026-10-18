@@ -28,6 +28,11 @@ async function openToolCore(key,title,docType,client,jobId){
   var html;
   try{html=await loadTool(key);}catch(e){showToast('Could not load the '+title+'. Check the connection and try again.',true);return;}
   if(SKINNED[key]){var skin=await loadSkin();if(skin)html=html.replace('</head>','<style id="v2-skin">'+skin+'</style></head>');}
+  if(key==='measure'&&CURRENT_USER){
+    // Read Photo: tell the photo reader who is asking, so only staff can use it.
+    var who=JSON.stringify({u:meUser(),k:CURRENT_USER.passwordHash||''}).replace(/</g,'\\u003c');
+    html=html.replace('<head>','<head><scr'+'ipt>(function(){var W='+who+',F=window.fetch;window.fetch=function(u,o){try{if(String(u).indexOf("claude-proxy")>=0){o=Object.assign({},o||{});o.headers=Object.assign({},o.headers||{},{"x-ea-user":W.u,"x-ea-key":W.k});}}catch(e){}return F.call(this,u,o);};})();</scr'+'ipt>');
+  }
   var lines=[];
   if(client){
     var c=client;

@@ -1,0 +1,123 @@
+/* Eco Air Portal v2 look for the Work Order and Measure builders.
+ * Loaded on top of each builder's own styles when it opens inside v2. Styles only:
+ * no markup, calculations, saving or PDF output change (the PDFs are drawn separately). */
+:root{
+  --G:#1b5e38;--GD:#143f27;--GL:#F3F6F4;--MG:#C9D2CC;--bdr:#D3DAD6;--tx2:#3f5344;--tx3:#5C6963;
+  --fn:Barlow,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --v2bg:#EEF1EF;--v2ink:#17221D;--v2soft:#F3F6F4
+}
+body{font-family:var(--fn);background:var(--v2bg);color:var(--v2ink);font-size:15px;line-height:1.4}
+
+/* top bar: v2 already shows the title, so this becomes a light action bar */
+.topbar{background:#fff;color:var(--v2ink);height:56px;padding:8px 16px;box-shadow:none;border-bottom:1px solid var(--bdr)}
+.topbar .tl,.topbar .tdv,.topbar .tt{display:none}
+.topbar .ta{margin-left:auto;flex-wrap:wrap;justify-content:flex-end;gap:8px}
+
+/* buttons */
+.btn{font-family:var(--fn);font-size:15px;font-weight:600;border-radius:8px;padding:9px 14px;line-height:1.2}
+.btn.bs{font-size:14px;padding:7px 12px}
+.bw{background:#fff;color:var(--G);border:0;box-shadow:inset 0 0 0 1.5px var(--bdr)}
+.bw:hover{background:var(--v2soft)}
+.bp,.btn-add{background:var(--G);color:#fff;border:0}
+.bp:hover,.btn-add:hover{background:var(--GD)}
+.bo,.bg2,.btn-pdf2{background:#fff;color:var(--G);border:0;box-shadow:inset 0 0 0 1.5px var(--bdr)}
+.bo:hover,.bg2:hover,.btn-pdf2:hover{background:var(--v2soft)}
+.btn-sum{font-family:var(--fn);font-size:15px;font-weight:700;padding:13px;border-radius:8px}
+.add-li,.add-btn{font-family:var(--fn);font-size:14px;font-weight:600;letter-spacing:0;text-transform:none;padding:11px;border-radius:8px;color:var(--G);border:1.5px dashed var(--MG)}
+.bdel,.del-x,.rm{font-size:18px;min-width:32px;min-height:32px}
+
+/* layout: the form reads as stacked cards on the grey background */
+.layout{background:var(--v2bg)}
+.fp{background:var(--v2bg);border-right:1px solid var(--bdr);top:56px;height:calc(100vh - 56px);padding-bottom:24px}
+.pp{height:calc(100vh - 56px);background:#DDE3DF}
+.layout{min-height:calc(100vh - 56px)}
+.fs{background:#fff;border:1px solid var(--bdr);border-radius:10px;margin:10px 12px;overflow:hidden}
+.fsh{padding:14px 16px;gap:12px}
+.fsh:hover{background:var(--v2soft)}
+.fsn{width:28px;height:28px;font-size:14px;font-family:"Barlow Semi Condensed",var(--fn);background:var(--G)}
+.fsl{font-family:"Barlow Semi Condensed",var(--fn);font-size:19px;font-weight:700;letter-spacing:.005em;text-transform:none;color:var(--v2ink)}
+.fsc{font-size:13px;color:var(--tx3)}
+.fsb{padding:0 16px 16px}
+.fr{gap:10px;margin-bottom:10px}
+.fr4{grid-template-columns:1fr 1fr}
+
+/* fields */
+label{font-size:14px;font-weight:500;color:var(--tx3);text-transform:none;letter-spacing:0}
+.fg{gap:5px}
+.fg input,.fg select,.fg textarea,.hourly-row input,.payee-row input,.payee-row select{
+  background:#fff;border:1px solid var(--bdr);border-radius:8px;padding:10px 12px;font-family:var(--fn);font-size:16px;color:var(--v2ink)}
+.fg input:focus,.fg select:focus,.fg textarea:focus{border-color:var(--G);box-shadow:0 0 0 3px rgba(27,94,56,.15)}
+input,select,textarea{font-family:var(--fn)}
+textarea{min-height:80px}
+
+/* work order type picker: segmented control */
+.type-tabs{background:#fff;border:1px solid var(--bdr);border-radius:10px;padding:3px;gap:2px;margin-bottom:12px}
+.ttab{border:0;background:none;border-radius:7px;font-family:var(--fn);font-size:14px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--tx3);padding:9px 4px}
+.ttab.active{background:var(--G);color:#fff}
+.ttab:hover:not(.active){background:var(--v2soft);color:var(--G)}
+
+/* line items */
+.sub-lbl{font-family:"Barlow Semi Condensed",var(--fn);font-size:16px;font-weight:700;letter-spacing:0;text-transform:none;color:var(--v2ink);background:none;border:0;border-bottom:1px solid var(--bdr);border-radius:0;padding:10px 0 6px;margin:8px 0 4px}
+.item-row{padding:8px 0;gap:10px;border-bottom:1px solid #EEF2EF}
+.item-name{font-size:15px;font-weight:500;color:var(--v2ink)}
+.item-rate{font-size:13px;color:var(--tx3)}
+.qty-ctrl{gap:6px}
+.qbtn{width:34px;height:34px;font-size:18px;background:#fff;border:1.5px solid var(--bdr);color:var(--G)}
+.qbtn:hover{background:var(--G);color:#fff;border-color:var(--G)}
+.qnum{width:40px;font-size:16px;padding:6px 2px;border-radius:8px}
+.item-tot{font-family:"Barlow Semi Condensed",var(--fn);font-size:16px;min-width:70px;font-variant-numeric:tabular-nums}
+
+/* options */
+.opt-grid{gap:8px}
+.opt-card{background:#fff;font-size:14px;padding:10px 12px;border-radius:8px;border:1.5px solid var(--bdr)}
+.opt-card.active{background:#E3EFE7;border-color:var(--G);color:var(--GD)}
+.opt-sub{font-size:13px}
+.opt-dot{width:18px;height:18px}
+.opt-dot::after{font-size:10px}
+
+/* hourly rows, payees, totals */
+.hourly-row,.payee-row{background:var(--v2soft);border-radius:8px;padding:10px;gap:8px}
+.h-tot,.py-out{font-family:"Barlow Semi Condensed",var(--fn);font-size:16px}
+.ts,.py-sum-box{background:var(--v2soft);border:1px solid var(--bdr);border-radius:10px;padding:12px 14px}
+.trow{font-size:15px;padding:4px 0;color:var(--tx2);font-variant-numeric:tabular-nums}
+.trow.g{font-family:"Barlow Semi Condensed",var(--fn);font-size:20px;border-top:1.5px solid var(--G)}
+.py-sum-row{font-size:14px}
+.py-sum-row.total{font-family:"Barlow Semi Condensed",var(--fn);font-size:17px}
+.py-badge{font-size:11px;text-transform:none;letter-spacing:0}
+.edit-banner{background:#FFF1CC;border:1px solid #EBD38E;color:#8A5B00;font-size:14px;border-radius:8px;padding:10px 12px}
+.edit-banner button{font-family:var(--fn);font-size:13px;padding:5px 10px;border-radius:6px}
+
+/* saved work order list inside the builder */
+.batch-area{background:var(--v2bg);border-top:1px solid var(--bdr)}
+.batch-hdr{background:#fff}
+.batch-title{font-family:"Barlow Semi Condensed",var(--fn);font-size:17px;letter-spacing:0;text-transform:none}
+.btbl thead th{background:var(--GD);font-size:12px;text-transform:none;letter-spacing:0;padding:8px}
+.btbl tbody td{font-size:14px;padding:10px 8px}
+.wtype-badge{font-size:11px;text-transform:none;padding:3px 8px}
+.money-cell,.batch-tot-grand{font-family:"Barlow Semi Condensed",var(--fn)}
+
+/* measure builder rows */
+.item-row[class*="c-"]{background:#fff;border-radius:8px;padding:8px 10px 8px 8px;margin-bottom:8px}
+.fit-chip{border-radius:8px;background:#fff}
+.fit-chip.active{background:#E3EFE7}
+.fit-chip .fc-nm{font-size:9px}
+.side-lbl{color:var(--tx3)}
+
+/* bottom save bars and pop-ups */
+#mobileSaveBar,.mob-bar{background:#fff!important;border-top:1px solid var(--bdr);box-shadow:0 -4px 14px rgba(0,0,0,.08)!important}
+.toast{background:var(--v2ink);border-radius:10px;font-size:14px;bottom:24px;right:auto;left:50%;transform:translate(-50%,80px)}
+.toast.show{transform:translate(-50%,0)}
+
+@media(max-width:768px){
+  .fp{top:0;height:auto}
+  .topbar{padding:8px 12px;height:auto;min-height:56px}
+  /* side-by-side item lists stack on phones so names and buttons have room */
+  .fsb div[style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr!important}
+  .fr4{grid-template-columns:1fr 1fr}
+  .fr3{grid-template-columns:1fr 1fr}
+  .btn{font-size:14px;padding:8px 12px}
+  .fs{margin:8px}
+  .fsb{padding:0 14px 14px}
+  .fg input,.fg select,.fg textarea{font-size:16px;padding:10px}
+  .ttab{font-size:13px;padding:8px 2px}
+}

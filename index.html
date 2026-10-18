@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1b5e38">
+<meta name="robots" content="noindex">
+<title>Eco Air Staff Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231b5e38%22/%3E%3Ctext x=%2216%22 y=%2222%22 font-size=%2216%22 text-anchor=%22middle%22 fill=%22white%22 font-family=%22Arial%22 font-weight=%22700%22%3EEA%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="roBanner" class="ro-banner" hidden>
+  <span><b>Preview</b> · live data, saving is off</span>
+  <button class="link" onclick="App.explainReadOnly()">Details</button>
+</div>
+
+<!-- Sign in -->
+<section id="login" class="login" hidden>
+  <form class="login-card" onsubmit="event.preventDefault();App.login()">
+    <div class="login-brand" id="loginBrand">Eco Air</div>
+    <h1>Staff portal</h1>
+    <label class="field">Username<input id="lgUser" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+    <label class="field">Password<input id="lgPass" type="password" autocomplete="current-password" required></label>
+    <p class="err" id="lgErr" role="alert" hidden></p>
+    <button class="btn wide big" id="lgBtn" type="submit">Sign in</button>
+    <p class="muted small" id="lgNote">Use the same username and password as the current portal.</p>
+  </form>
+</section>
+
+<!-- Loading -->
+<section id="boot" class="boot">
+  <div class="boot-mark">Eco Air</div>
+  <p class="muted" id="bootMsg">Connecting…</p>
+</section>
+
+<!-- App -->
+<div id="app" hidden>
+  <div class="shell"><main class="screen" id="screen"></main></div>
+  <nav class="tabs" id="tabs" aria-label="Main"></nav>
+  <button class="fab" id="fab" aria-label="Create new" aria-expanded="false" onclick="App.newMenu()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>New</span></button>
+</div>
+
+<div id="sheets"></div>
+<div id="toast" class="toast" role="status" hidden></div>
+
+<!-- Invoice builder host. The markup below is the original portal's invoice pane (same element ids),
+     so the carried-over invoice engine works without changes. It lives inside a full-screen sheet. -->
+<template id="invoiceTpl">
+  <div class="pane active" id="pane-invoice">
+    <div id="invEditBanner" style="display:none;align-items:center;gap:10px;background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;font-weight:600;color:#854d0e">
+      <span>Editing a saved invoice. Adjust the work orders, then create the PDF again.</span>
+      <button class="btn bw bsm" style="margin-left:auto" onclick="exitInvEditMode()">Stop editing</button>
+    </div>
+    <div id="invTabBar" style="display:flex;border-bottom:2px solid var(--bdr);margin-bottom:14px">
+      <button onclick="invTab(0)" id="invTab0" style="flex:1;padding:10px 8px;background:none;border:none;border-bottom:3px solid var(--G);font-size:14px;font-weight:700;color:var(--GD);cursor:pointer;margin-bottom:-2px">1 · Work orders</button>
+      <button onclick="invTab(1)" id="invTab1" style="flex:1;padding:10px 8px;background:none;border:none;border-bottom:3px solid transparent;font-size:14px;font-weight:600;color:var(--tx2);cursor:pointer;margin-bottom:-2px">2 · Details</button>
+      <button onclick="invTab(2)" id="invTab2" style="flex:1;padding:10px 8px;background:none;border:none;border-bottom:3px solid transparent;font-size:14px;font-weight:600;color:var(--tx2);cursor:pointer;margin-bottom:-2px">3 · Preview</button>
+    </div>
+    <div id="invBuilderGrid" style="gap:14px;align-items:start">
+      <div id="invCol0" style="flex:0 0 320px;min-width:0;width:100%">
+        <div class="card" style="overflow:hidden">
+          <div class="inv-colhead">Ready to invoice</div>
+          <div id="invWOList" style="padding:6px;max-height:62vh;overflow-y:auto"><div style="text-align:center;padding:20px;color:var(--tx3);font-size:13px">Loading…</div></div>
+        </div>
+      </div>
+      <div id="invCol1" style="flex:1;min-width:0;display:none;flex-direction:column;gap:14px">
+        <div class="card" style="overflow:hidden">
+          <div class="inv-colhead">Invoice details</div>
+          <div style="padding:14px;display:flex;flex-direction:column;gap:14px">
+            <label class="field">Invoice from<input id="invFromName" placeholder="Installer or crew name" oninput="renderInvPreview()"></label>
+            <label class="field">Invoice to (contractor)<textarea id="invBillTo" rows="3" placeholder="Contractor name&#10;Address&#10;City, Province" oninput="renderInvPreview()"></textarea></label>
+            <div>
+              <div class="inv-label">Work orders added</div>
+              <div id="invAddedWOs" style="display:flex;flex-direction:column;gap:4px"><div style="font-size:12px;color:var(--tx3);text-align:center;padding:10px">No work orders added yet.</div></div>
+              <div id="invSelSummary" style="margin-top:8px;font-size:12px;color:var(--GD);font-weight:700"></div>
+            </div>
+            <div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><span class="inv-label" style="margin:0">Extra line items</span><button class="btn bw bsm" onclick="invAddCustomLine()">Add line</button></div>
+              <div id="invCustomLines" style="display:flex;flex-direction:column;gap:4px"><div style="font-size:12px;color:var(--tx3);text-align:center;padding:6px">No extra lines added.</div></div>
+            </div>
+            <div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><span class="inv-label" style="margin:0">Partners and apprentices <span style="font-weight:400;color:var(--tx3)">(main invoice only)</span></span><button class="btn bw bsm" onclick="addInvApprent()">Add person</button></div>
+              <datalist id="crewNamesList"></datalist>
+              <div id="invApprentRows"><div style="font-size:12px;color:var(--tx3);text-align:center;padding:8px">Add a partner or apprentice to split the pay.</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="invCol2" style="flex:1;min-width:0;display:none">
+        <div class="card" style="overflow:hidden">
+          <div class="inv-colhead">Preview</div>
+          <div id="invPreview" style="padding:16px;font-size:11px;max-height:70vh;overflow-y:auto"></div>
+        </div>
+      </div>
+    </div>
+    <div id="invSplitCard" style="margin-top:16px">
+      <button id="splitToggleBtn" onclick="toggleInvSplit()" class="btn ghost wide">Split invoice by work orders</button>
+      <div id="invSplitForm" style="display:none;margin-top:12px;flex-direction:column;gap:10px">
+        <div id="invSplitGroups"></div>
+        <button onclick="addSplitGroup()" class="btn ghost wide">Add another group</button>
+        <button onclick="buildSplitInvoicePDFs()" class="btn wide">Create split invoices</button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>if(typeof pdfjsLib!=='undefined')pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+<script src="config.js"></script>
+<script src="legacy-compat.js"></script>
+<script src="app-core.js"></script>
+<script src="app-screens.js"></script>
+<script src="app-sites.js"></script>
+<script src="app-tools.js"></script>
+<script src="invoice-engine.js"></script>
+<script>App.start();</script>
+</body>
+</html>

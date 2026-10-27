@@ -210,3 +210,14 @@ body.ro .sh-head{padding-top:6px}
   .sheet.enter{animation:sheetIn .16s ease-out}
   @keyframes sheetIn{from{opacity:0;transform:translateX(-50%) translateY(14px)}}
 }
+
+/* document drop zones */
+.dropzone{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;border:2px dashed var(--line,#cfd8d2);border-radius:12px;padding:22px 16px;background:var(--panel);cursor:pointer;color:var(--ink,#1a1f1c);transition:border-color .15s,background .15s}
+.dropzone span{font-size:14px;color:var(--muted,#5f6b64)}
+.dropzone.slim{padding:14px 16px;margin-bottom:12px}
+.dropzone:hover,.dropzone:focus-visible,.dropzone.over{border-color:var(--accent);background:var(--accent-soft)}
+.filelist{margin-top:12px}
+.droppable{border-radius:12px;transition:outline-color .15s;outline:2px dashed transparent;outline-offset:4px}
+.droppable.over{outline-color:var(--accent);background:var(--accent-soft)}
+.drophint{margin:-4px 0 8px;font-size:13px}
+@media (hover:none){.drophint{display:none}}

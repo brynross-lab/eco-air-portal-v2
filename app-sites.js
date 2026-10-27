@@ -210,7 +210,8 @@ function siteFilesTab(site){
   var docs=D.docs.filter(function(d){return d.builder===site.builder&&d.site===site.site;});
   var by={};docs.forEach(function(d){var l=d.lot||'General';(by[l]=by[l]||[]).push(d);});
   var keys=Object.keys(by).sort(function(a,b){return (parseInt(a)||0)-(parseInt(b)||0)||a.localeCompare(b);});
-  return (isAdm()?'<button class="btn ghost wide" style="margin-bottom:12px" onclick="App.uploadDoc(R('+reg({builder:site.builder,site:site.site,lot:'',mapId:(site.maps&&site.maps.length===1)?site.maps[0]._id:''})+'))">Upload a document</button>':'')
+  var fctx=reg({builder:site.builder,site:site.site,lot:'',mapId:(site.maps&&site.maps.length===1)?site.maps[0]._id:''});
+  return (isAdm()?'<div class="dropzone slim" role="button" tabindex="0" onclick="App.uploadDoc(R('+fctx+'))" onkeydown="if(event.key===\'Enter\')this.click()"'+dropAttrs('App.dropToLot(event,R('+fctx+'))')+'><b>Upload documents</b><span>Tap, or drag files here</span></div>':'')
     +(keys.length?keys.map(function(k){return '<h3 style="margin:12px 0 8px">'+(k==='General'?'Whole site':'Lot '+h(k))+'</h3><div class="card">'+by[k].map(docRow).join('')+'</div>';}).join(''):'<div class="card"><p class="empty">No heating plans, site maps or drawings uploaded yet.</p></div>');
 }
 function docRow(d){
@@ -407,7 +408,8 @@ SHEETS.lot=function(e){
     }).join('')+'</div>':'<p class="s">No masters saved for model '+h(model)+' yet.</p>')+'</div>';
   }
   // documents
-  html+='<div class="sec"><div class="sec-h"><h3>Documents</h3>'+(admin?'<button class="link" onclick="App.uploadDoc(R('+reg({builder:builder,site:site,lot:String(lot.num||''),mapId:map._id})+'))">Upload</button>':'')+'</div>'
+  var dctx=reg({builder:builder,site:site,lot:String(lot.num||''),mapId:map._id});
+  html+='<div class="sec droppable"'+(admin?dropAttrs('App.dropToLot(event,R('+dctx+'))'):'')+'><div class="sec-h"><h3>Documents</h3>'+(admin?'<button class="link" onclick="App.uploadDoc(R('+dctx+'))">Upload</button>':'')+'</div>'+(admin?'<p class="s drophint">Drag files here to upload them to this lot.</p>':'')
     +(tplDocs.length||docs.length?'<div class="card">'+tplDocs.map(function(d){return '<div class="lrow"><a class="lmain" href="'+h(d.url)+'" target="_blank" rel="noopener"><span class="top"><b>'+h(d.label||d.fileName)+'</b><span class="pill ok">From master lot</span></span><span class="s">'+h(d.type)+'</span></a></div>';}).join('')+docs.map(docRow).join('')+'</div>':'<p class="s">No documents for this lot.</p>')+'</div>';
   // tasks
   var done=tasks.filter(function(t){return t.status==='complete';}).length;
@@ -588,38 +590,84 @@ App.saveMap=async function(){
 };
 
 /* ───────────────────────── upload a document (admin) ───────────────────────── */
-App.uploadDoc=function(ctx){push({type:'uploadDoc',ctx:ctx,d:{lot:ctx.lot||'',type:'Heating Plan',label:''}});};
+App.uploadDoc=function(ctx,files){push({type:'uploadDoc',ctx:ctx,files:[],d:{lot:ctx.lot||'',type:'Heating Plan',label:''}});if(files&&files.length)App.addDocFiles(files);};
+// Add files to the open upload sheet (from the picker or a drop). Keeps them across redraws.
+App.addDocFiles=function(list){
+  var e=curSheet();if(!e||e.type!=='uploadDoc')return;
+  Array.prototype.forEach.call(list||[],function(f){if(!e.files.some(function(x){return x.name===f.name&&x.size===f.size;}))e.files.push(f);});
+  rerender();
+};
+App.removeDocFile=function(i){var e=curSheet();e.files.splice(i,1);rerender();};
+// Drop zone helpers, used on the upload sheet and on a lot's Documents section.
+function dropAttrs(onDrop){
+  return ' ondragover="event.preventDefault();this.classList.add(\'over\')" ondragleave="if(!this.contains(event.relatedTarget))this.classList.remove(\'over\')"'
+    +' ondrop="event.preventDefault();this.classList.remove(\'over\');'+onDrop+'"';
+}
+App.dropToLot=function(ev,ctx){
+  var f=ev.dataTransfer&&ev.dataTransfer.files;if(!f||!f.length)return;
+  if(!isAdm())return showToast('Only admins can upload documents.',true);
+  App.uploadDoc(ctx,f);
+};
+function fmtSize(n){return n>1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))+' KB';}
 SHEETS.uploadDoc=function(e){
-  return {title:'Upload document',sub:[e.ctx.builder,e.ctx.site].filter(Boolean).join(' · '),body:'<div class="sec">'
+  var many=e.files.length>1,busy=e.busy;
+  return {title:'Upload documents',sub:[e.ctx.builder,e.ctx.site].filter(Boolean).join(' · '),body:'<div class="sec">'
     +fld('Lot number','lot','text','Use "General" for the whole site')
-    +'<label class="field">Type<select onchange="App.setD(\'type\',this.value)">'+['Heating Plan','Site Map','Architectural','Extra'].map(function(t){return '<option '+(t===e.d.type?'selected':'')+'>'+t+'</option>';}).join('')+'</select></label>'
-    +fld('Label (optional)','label')+'<label class="field">File<input type="file" id="docFile"></label>'+(e.pct!=null?'<div class="prog"><span style="width:'+e.pct+'%"></span></div>':'')+'</div>',
-    foot:'<button class="btn ghost" onclick="App.pop()">Cancel</button><button class="btn" onclick="App.saveDoc()">Upload</button>'};
+    +'<label class="field">Type'+(many?' (for all files)':'')+'<select onchange="App.setD(\'type\',this.value)">'+['Heating Plan','Site Map','Architectural','Extra'].map(function(t){return '<option '+(t===e.d.type?'selected':'')+'>'+t+'</option>';}).join('')+'</select></label>'
+    +(many?'':fld('Label (optional)','label'))
+    +'<div class="dropzone" role="button" tabindex="0" onclick="document.getElementById(\'docFile\').click()" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click()}"'+dropAttrs('App.addDocFiles(event.dataTransfer.files)')+'>'
+      +'<b>Drop files here</b><span>or tap to choose. You can pick several at once.</span>'
+      +'<input type="file" id="docFile" multiple hidden onchange="App.addDocFiles(this.files);this.value=\'\'"></div>'
+    +(e.files.length?'<div class="card filelist">'+e.files.map(function(f,i){
+        var st=e.status&&e.status[i];
+        return '<div class="lrow"><div class="lmain"><b>'+h(f.name)+'</b><span class="s">'+fmtSize(f.size)+(st?' · '+h(st):'')+'</span></div>'
+          +(busy?'':'<button class="btn ghost mini" aria-label="Remove '+h(f.name)+'" onclick="App.removeDocFile('+i+')">Remove</button>')+'</div>';
+      }).join('')+'</div>':'')
+    +'<div class="prog" id="docProg"'+(busy?'':' hidden')+'><span style="width:'+(e.pct||0)+'%"></span></div>'
+    +'</div>',
+    foot:'<button class="btn ghost" onclick="App.pop()"'+(busy?' disabled':'')+'>Cancel</button><button class="btn" onclick="App.saveDoc()"'+(busy?' disabled':'')+'>'
+      +(busy?'Uploading…':'Upload'+(e.files.length>1?' '+e.files.length+' files':''))+'</button>'};
 };
 App.saveDoc=async function(){
-  var e=curSheet(),d=e.d,lot=String(d.lot||'').trim(),file=(document.getElementById('docFile')||{}).files;file=file&&file[0];
+  var e=curSheet(),d=e.d,lot=String(d.lot||'').trim(),files=e.files.slice();
   if(!lot)return rerender('Enter a lot number, or "General" for the whole site.');
-  if(!file)return rerender('Choose a file to upload.');
+  if(!files.length)return rerender('Choose or drop at least one file.');
   if(READ_ONLY){notifyReadOnly();return;}
   if(!STORAGE)return rerender('File storage isn\'t connected.');
-  var sb=e.ctx.builder.replace(/[^a-zA-Z0-9_-]/g,'_'),ss=e.ctx.site.replace(/[^a-zA-Z0-9_-]/g,'_'),sl=lot.replace(/[^a-zA-Z0-9_-]/g,'_'),id='doc_'+Date.now();
-  var path='site_docs/'+sb+'/'+ss+'/'+sl+'/'+id+'_'+file.name;
+  var sb=e.ctx.builder.replace(/[^a-zA-Z0-9_-]/g,'_'),ss=e.ctx.site.replace(/[^a-zA-Z0-9_-]/g,'_'),sl=lot.replace(/[^a-zA-Z0-9_-]/g,'_');
+  var total=files.reduce(function(a,f){return a+f.size;},0)||1,doneBytes=0,failed=[];
+  e.busy=true;e.status={};e.pct=0;rerender();
+  var setPct=function(p){e.pct=p;var b=document.querySelector('#docProg span');if(b)b.style.width=p+'%';};
   var ok=await save(async function(){
-    var ref=STORAGE.ref(path),task=ref.put(file);
-    await new Promise(function(res,rej){task.on('state_changed',function(s){e.pct=Math.round(s.bytesTransferred/s.totalBytes*100);},rej,res);});
-    var url=await ref.getDownloadURL();
-    await DB.collection('site_docs').doc(id).set({_id:id,builder:e.ctx.builder,site:e.ctx.site,lot:lot,type:d.type,label:d.label||file.name,fileName:file.name,storagePath:path,url:url,uploadedBy:meName()||'admin',uploadedAt:new Date().toISOString(),_deleted:false,_mapId:e.ctx.mapId||''});
-    // Also attach to any job for this lot and builder (same rule as the live portal)
+    // Jobs for this lot and builder get each document too (same rule as the live portal)
+    var jobs=[];
     try{
       var ub=lc(e.ctx.builder),js=await DB.collection('jobs').get();
-      var entry={id:id,type:d.type,label:d.label||file.name,date:new Date().toISOString(),by:meName()||'',pdfUrl:url,fileName:file.name,fromSiteDocs:true};
-      for(var i=0;i<js.docs.length;i++){
-        var jd=js.docs[i].data();if(jd._deleted||jd.status==='deleted')continue;
-        var jb=lc(jd.clientName);
-        if(String(jd.lotNum||'').trim()===lot&&(!ub||!jb||jb===ub||jb.indexOf(ub)>=0||ub.indexOf(jb)>=0))
-          await DB.collection('jobs').doc(js.docs[i].id).update({documents:firebase.firestore.FieldValue.arrayUnion(entry)}).catch(function(){});
-      }
+      js.docs.forEach(function(x){var jd=x.data();if(jd._deleted||jd.status==='deleted')return;var jb=lc(jd.clientName);
+        if(String(jd.lotNum||'').trim()===lot&&(!ub||!jb||jb===ub||jb.indexOf(ub)>=0||ub.indexOf(jb)>=0))jobs.push(x.id);});
     }catch(x){}
-  },'Document uploaded');
-  if(ok){await loadDocs();popSheet();changed();}
+    for(var i=0;i<files.length;i++){
+      var file=files[i],id='doc_'+Date.now()+'_'+i,path='site_docs/'+sb+'/'+ss+'/'+sl+'/'+id+'_'+file.name;
+      e.status[i]='Uploading…';rerender();setPct(Math.round(doneBytes/total*100));
+      try{
+        var ref=STORAGE.ref(path),task=ref.put(file);
+        await new Promise(function(res,rej){task.on('state_changed',function(s){setPct(Math.round((doneBytes+s.bytesTransferred)/total*100));},rej,res);});
+        var url=await ref.getDownloadURL(),label=(files.length===1&&d.label)||file.name,now=new Date().toISOString();
+        await DB.collection('site_docs').doc(id).set({_id:id,builder:e.ctx.builder,site:e.ctx.site,lot:lot,type:d.type,label:label,fileName:file.name,storagePath:path,url:url,uploadedBy:meName()||'admin',uploadedAt:now,_deleted:false,_mapId:e.ctx.mapId||''});
+        var entry={id:id,type:d.type,label:label,date:now,by:meName()||'',pdfUrl:url,fileName:file.name,fromSiteDocs:true};
+        for(var j=0;j<jobs.length;j++)await DB.collection('jobs').doc(jobs[j]).update({documents:firebase.firestore.FieldValue.arrayUnion(entry)}).catch(function(){});
+        e.status[i]='Uploaded';
+      }catch(err){e.status[i]='Failed: '+(err&&err.message||err);failed.push(file.name);}
+      doneBytes+=file.size;
+    }
+    setPct(100);
+    if(failed.length===files.length)throw new Error('No files uploaded');
+  },files.length>1?files.length-failed.length+' documents uploaded':'Document uploaded');
+  e.busy=false;
+  await loadDocs();changed();
+  if(ok&&!failed.length)popSheet();
+  else{e.files=files.filter(function(f){return failed.indexOf(f.name)>=0;});e.status={};rerender(failed.length?failed.length+' file'+(failed.length>1?'s':'')+' didn\'t upload. Try them again.':'');}
 };
+// Stop a file dropped outside a drop zone from opening in the browser and leaving the portal.
+document.addEventListener('dragover',function(ev){if(ev.dataTransfer&&Array.prototype.indexOf.call(ev.dataTransfer.types||[],'Files')>=0)ev.preventDefault();});
+document.addEventListener('drop',function(ev){if(ev.dataTransfer&&ev.dataTransfer.files&&ev.dataTransfer.files.length)ev.preventDefault();});

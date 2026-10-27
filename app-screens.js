@@ -243,6 +243,7 @@ SCREENS.more = function(){
     +(isAdm()?row('Approvals','App.approvals()','Work order edits and share requests',approvalCount()||''):'')
     +(isAdm()?row('Staff accounts','App.staff()',pl(D.staff.length,'person','people')):'')
     +(isAdm()?row('Activity','App.activity()','Recent actions by everyone'):'')
+    +(isAdm()?row('Download a backup','App.backup()','Everything in the shared database, as one file'):'')
     +'</div></div>';
   if(isAdm()&&EA.LEGACY_PORTAL_URL){
     html+='<div class="blk"><h2>Still in the current portal</h2><div class="card">'
@@ -615,4 +616,22 @@ SHEETS.activity=function(e){
   return {title:'Activity',body:Object.keys(by).sort().reverse().map(function(d){
     return '<div class="sec"><h3>'+(d===todayISO()?'Today':fmtDay(d))+'</h3><div class="card">'+by[d].map(function(i){return '<div class="stat"><div>'+h(ACT_LABELS[i.type]||i.type)+(i.detail?' · <span class="muted">'+h(i.detail)+'</span>':'')+'<span>'+h(i.userName||i.user||'')+'</span></div><span class="s">'+h(String(i.at||'').slice(11,16))+'</span></div>';}).join('')+'</div></div>';
   }).join('')||'<div class="sec"><p class="empty">No activity yet.</p></div>'};
+};
+
+/* Backup: reads every collection both portals use and downloads it as one JSON file. Read-only. */
+App.backup=async function(){
+  var names=['staff','clients','jobs','saved_workorder','pending_lots','saved_masters','saved_measure','model_masters','site_maps','lot_data','assignments','site_docs','invoices','estimates','pending_review','calendar_events','activity_log','meta'];
+  showToast('Building backup…');
+  var out={_exportedAt:new Date().toISOString(),_by:meUser(),collections:{}},n=0;
+  try{
+    for(var i=0;i<names.length;i++){
+      var snap=await DB.collection(names[i]).get(),m={};
+      snap.forEach(function(d){var x=d.data();m[d.id]=x;n++;});
+      out.collections[names[i]]=m;
+    }
+    var blob=new Blob([JSON.stringify(out)],{type:'application/json'}),a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);a.download='eco-air-backup-'+new Date().toISOString().slice(0,10)+'.json';
+    document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},2000);
+    showToast('Backup downloaded ('+n+' records)');
+  }catch(e){showToast('Backup failed: '+e.message,true);}
 };

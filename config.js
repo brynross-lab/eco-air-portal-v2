@@ -4,13 +4,14 @@
  *   true  = preview mode. The app reads your live data but every save, upload and delete is
  *           blocked before it reaches Firebase. Nothing in the current portal can change.
  *   false = the app saves to the same database the current portal uses.
- *   Turn it off only after you've exported a Firestore backup (see README.md).
+ *   Turned off 2026-10-27: v2 saves to the live database alongside the current portal.
+ *   Set back to true and redeploy to return to preview mode at any time.
  *
  * FIREBASE
  *   The same web config the current portal has baked in, so both apps share one database.
  */
 window.EA_CONFIG = {
-  READ_ONLY: true,
+  READ_ONLY: false,
 
   FIREBASE: {
     apiKey: "AIzaSyDd96GHh5CP3SFyK5mjyhn_7XdPqV1h2AI",

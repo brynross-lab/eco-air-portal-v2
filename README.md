@@ -4,18 +4,18 @@ A simpler, phone-first version of the staff portal. It is a **separate app** tha
 **same Firebase database** as the current portal (`ecoair-portal`). The current portal's
 code and deployment are not touched.
 
-## Safe by default
+## Saving (on since 2026-10-27)
 
-`config.js` ships with `READ_ONLY: true`. In that mode every save, upload and delete is
-refused inside the browser before it reaches Firebase, so you can click through everything
-with real data and nothing can change. The app shows a yellow "Preview" bar the whole time.
+`config.js` has `READ_ONLY: false`: v2 saves to the same Firestore records as the current
+portal, so staff can use either one and see the same data.
 
-When you're ready to use it for real:
-
-1. **Back up Firestore first.** In the Google Cloud console, open Firestore → Import/Export
-   → Export, and pick a Cloud Storage bucket. (Or `gcloud firestore export gs://YOUR_BUCKET`.)
-2. In `config.js`, change `READ_ONLY: true` to `READ_ONLY: false`.
-3. Redeploy. Both portals now save to the same records, so staff can switch between them.
+- **Backup:** admins can download everything from More → Download a backup (one JSON file).
+  Do this before big changes. A full Firestore export is in Google Cloud console →
+  Firestore → Import/Export.
+- **Back to preview:** set `READ_ONLY: true` and redeploy. Every save, upload and delete is
+  then refused in the browser, and a yellow "Preview" bar shows.
+- **Keeping the two in step:** v2 copies the builders and invoice engine from the current
+  portal. When the current portal changes how it saves something, copy that change here too.
 
 ## Deploy as its own Vercel project
 

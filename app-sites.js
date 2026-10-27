@@ -210,7 +210,7 @@ function siteFilesTab(site){
   var docs=D.docs.filter(function(d){return d.builder===site.builder&&d.site===site.site;});
   var by={};docs.forEach(function(d){var l=d.lot||'General';(by[l]=by[l]||[]).push(d);});
   var keys=Object.keys(by).sort(function(a,b){return (parseInt(a)||0)-(parseInt(b)||0)||a.localeCompare(b);});
-  return (isAdm()?'<button class="btn ghost wide" style="margin-bottom:12px" onclick="App.uploadDoc(R('+reg({builder:site.builder,site:site.site,lot:''})+'))">Upload a document</button>':'')
+  return (isAdm()?'<button class="btn ghost wide" style="margin-bottom:12px" onclick="App.uploadDoc(R('+reg({builder:site.builder,site:site.site,lot:'',mapId:(site.maps&&site.maps.length===1)?site.maps[0]._id:''})+'))">Upload a document</button>':'')
     +(keys.length?keys.map(function(k){return '<h3 style="margin:12px 0 8px">'+(k==='General'?'Whole site':'Lot '+h(k))+'</h3><div class="card">'+by[k].map(docRow).join('')+'</div>';}).join(''):'<div class="card"><p class="empty">No heating plans, site maps or drawings uploaded yet.</p></div>');
 }
 function docRow(d){
@@ -362,7 +362,7 @@ SHEETS.lot=function(e){
   var ld=D.lotData[e.key]||{},flags=(ld.flags||[]).filter(function(x){return !x.resolved;});
   var tasks=ld.tasks||defaultTasks();
   var s0=wos[0]?woSnap(wos[0]):{};
-  var builder=s0.fb||s0.fbuilder||map.builder||'',site=s0.fp||s0.fsite||map.site||'';
+  var builder=map.builder||s0.fb||s0.fbuilder||map.name||'',site=map.site||s0.fp||s0.fsite||'';
   var model=lot.model||s0.fm||s0.fmodel||'';
   var st=stageOf(lotStage(byLot,lot));
   var masters=modelMastersFor(model).filter(canSee);
@@ -374,11 +374,11 @@ SHEETS.lot=function(e){
     if(mm.masterWOIds&&mm.masterWOIds.length){var ids=new Set(mm.masterWOIds);tplWOs=D.wos.filter(function(w){return ids.has(w._id)&&!w._deleted;});}
     else{var mLot=map.lots.find(function(l){return smLotKey(map._id,l)===mm.masterLotKey;});var mNum=String(mm.masterLotNum||(mLot&&mLot.num)||'').trim();if(mNum)tplWOs=allSite.filter(function(w){return woLot(w)===mNum;});}
     var mNum2=String(mm.masterLotNum||'').trim();
-    if(mNum2)tplDocs=D.docs.filter(function(d){return d.builder===builder&&d.site===site&&String(d.lot||'').trim()===mNum2;});
+    if(mNum2)tplDocs=D.docs.filter(function(d){return (!d._mapId||d._mapId===map._id)&&d.builder===builder&&d.site===site&&String(d.lot||'').trim()===mNum2;});
   }
   var haveTypes={};wos.forEach(function(w){var t=woTypeRaw(w);if(t)haveTypes[t]=1;});
   tplWOs=tplWOs.filter(function(w){return !haveTypes[woTypeRaw(w)];});
-  var docs=D.docs.filter(function(d){return d.builder===builder&&d.site===site&&(String(d.lot)===String(lot.num)||((!d.lot||d.lot==='General')&&['Heating Plan','Extra','Architectural'].indexOf(d.type)>=0));});
+  var docs=D.docs.filter(function(d){return (!d._mapId||d._mapId===map._id)&&(d._mapId===map._id||(d.builder===builder&&d.site===site))&&(String(d.lot)===String(lot.num)||((!d.lot||d.lot==='General')&&['Heating Plan','Extra','Architectural'].indexOf(d.type)>=0));});
   var docNames=new Set(docs.map(function(d){return lc(d.label||d.fileName);}));tplDocs=tplDocs.filter(function(d){return !docNames.has(lc(d.label||d.fileName));});
   var ownMasters=masters.filter(function(m){return String(masterLot(m)).trim()===String(lot.num||'').trim()&&masterLot(m)!=='';});
   var html='';
@@ -407,7 +407,7 @@ SHEETS.lot=function(e){
     }).join('')+'</div>':'<p class="s">No masters saved for model '+h(model)+' yet.</p>')+'</div>';
   }
   // documents
-  html+='<div class="sec"><div class="sec-h"><h3>Documents</h3>'+(admin?'<button class="link" onclick="App.uploadDoc(R('+reg({builder:builder,site:site,lot:String(lot.num||'')})+'))">Upload</button>':'')+'</div>'
+  html+='<div class="sec"><div class="sec-h"><h3>Documents</h3>'+(admin?'<button class="link" onclick="App.uploadDoc(R('+reg({builder:builder,site:site,lot:String(lot.num||''),mapId:map._id})+'))">Upload</button>':'')+'</div>'
     +(tplDocs.length||docs.length?'<div class="card">'+tplDocs.map(function(d){return '<div class="lrow"><a class="lmain" href="'+h(d.url)+'" target="_blank" rel="noopener"><span class="top"><b>'+h(d.label||d.fileName)+'</b><span class="pill ok">From master lot</span></span><span class="s">'+h(d.type)+'</span></a></div>';}).join('')+docs.map(docRow).join('')+'</div>':'<p class="s">No documents for this lot.</p>')+'</div>';
   // tasks
   var done=tasks.filter(function(t){return t.status==='complete';}).length;
@@ -608,7 +608,18 @@ App.saveDoc=async function(){
     var ref=STORAGE.ref(path),task=ref.put(file);
     await new Promise(function(res,rej){task.on('state_changed',function(s){e.pct=Math.round(s.bytesTransferred/s.totalBytes*100);},rej,res);});
     var url=await ref.getDownloadURL();
-    await DB.collection('site_docs').doc(id).set({_id:id,builder:e.ctx.builder,site:e.ctx.site,lot:lot,type:d.type,label:d.label||file.name,fileName:file.name,storagePath:path,url:url,uploadedBy:meName()||'admin',uploadedAt:new Date().toISOString(),_deleted:false});
+    await DB.collection('site_docs').doc(id).set({_id:id,builder:e.ctx.builder,site:e.ctx.site,lot:lot,type:d.type,label:d.label||file.name,fileName:file.name,storagePath:path,url:url,uploadedBy:meName()||'admin',uploadedAt:new Date().toISOString(),_deleted:false,_mapId:e.ctx.mapId||''});
+    // Also attach to any job for this lot and builder (same rule as the live portal)
+    try{
+      var ub=lc(e.ctx.builder),js=await DB.collection('jobs').get();
+      var entry={id:id,type:d.type,label:d.label||file.name,date:new Date().toISOString(),by:meName()||'',pdfUrl:url,fileName:file.name,fromSiteDocs:true};
+      for(var i=0;i<js.docs.length;i++){
+        var jd=js.docs[i].data();if(jd._deleted||jd.status==='deleted')continue;
+        var jb=lc(jd.clientName);
+        if(String(jd.lotNum||'').trim()===lot&&(!ub||!jb||jb===ub||jb.indexOf(ub)>=0||ub.indexOf(jb)>=0))
+          await DB.collection('jobs').doc(js.docs[i].id).update({documents:firebase.firestore.FieldValue.arrayUnion(entry)}).catch(function(){});
+      }
+    }catch(x){}
   },'Document uploaded');
   if(ok){await loadDocs();popSheet();changed();}
 };

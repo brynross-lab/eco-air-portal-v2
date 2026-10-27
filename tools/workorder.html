@@ -898,6 +898,7 @@ function renderPreview(){
       <div>
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:900;color:${GD};letter-spacing:3px">WORK ORDER</div>
         <div style="font-size:9px;color:#7a907e;margin-top:1px">HVAC Installation &amp; Rough-In</div>
+        ${(block||lot||unit)?`<div style="display:flex;gap:8px;margin-top:5px;flex-wrap:wrap">${block?`<span style="background:${GD};color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:2px 8px;border-radius:3px">BLOCK ${hx(block)}</span>`:''}${lot?`<span style="background:${GM};color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:2px 8px;border-radius:3px">LOT ${hx(lot)}</span>`:''}${unit?`<span style="background:#2d7a50;color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:2px 8px;border-radius:3px">UNIT ${hx(unit)}</span>`:''}</div>`:''}
       </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">

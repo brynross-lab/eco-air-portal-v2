@@ -283,10 +283,10 @@ body.no-branding { --GD: #333 !important; --GM: #666 !important; --GL: #eee !imp
 })();
 
 
-window.__jobRef={master:'',unit:'',lot:''};
-function setJobRef(master,unit,lot){
-  window.__jobRef={master:master||'',unit:unit||'',lot:lot||''};
-  var ids={fmaster:master,funit:unit,flot:lot,fl:lot};
+window.__jobRef={master:'',unit:'',lot:'',block:''};
+function setJobRef(master,unit,lot,block){
+  window.__jobRef={master:master||'',unit:unit||'',lot:lot||'',block:block||''};
+  var ids={fmaster:master,funit:unit,flot:lot,fl:lot,fblock:block};
   Object.keys(ids).forEach(function(id){var el=document.getElementById(id);if(el&&ids[id])el.value=ids[id];});
   if(typeof render==='function')setTimeout(render,40);
   if(typeof calc==='function')setTimeout(calc,40);
@@ -734,7 +734,7 @@ window.addEventListener('message',function(e){
       <div class="section-hdr" onclick="tog('sec-info')">Estimate Info <span class="arrow">&#9660;</span></div>
       <div class="section-body">
         <div class="row3">
-          <div class="field"><label>Est. #</label><input id="fen" value="1356" oninput="render()" onblur="checkEstimateNumber(this.value)"></div><div class="field"><label>Master #</label><input id="fmaster" placeholder="ECO-1001" oninput="render()"></div><div class="field"><label>Builder</label><input id="fbuilder" placeholder="e.g. Treasure Hill" list="es_blist" oninput="render()" autocomplete="off"><datalist id="es_blist"></datalist></div><div class="field"><label>Site</label><input id="fsite" placeholder="e.g. Mayfield" list="es_slist" oninput="render()" autocomplete="off"><datalist id="es_slist"></datalist></div><div class="field"><label>Unit #</label><input id="funit" placeholder="2B" oninput="render()"></div><div class="field"><label>Lot #</label><input id="flot" placeholder="42" oninput="render()"></div>
+          <div class="field"><label>Est. #</label><input id="fen" value="1356" oninput="render()" onblur="checkEstimateNumber(this.value)"></div><div class="field"><label>Master #</label><input id="fmaster" placeholder="ECO-1001" oninput="render()"></div><div class="field"><label>Builder</label><input id="fbuilder" placeholder="e.g. Treasure Hill" list="es_blist" oninput="render()" autocomplete="off"><datalist id="es_blist"></datalist></div><div class="field"><label>Site</label><input id="fsite" placeholder="e.g. Mayfield" list="es_slist" oninput="render()" autocomplete="off"><datalist id="es_slist"></datalist></div><div class="field"><label>Block #</label><input id="fblock" placeholder="A" oninput="render()"></div><div class="field"><label>Unit #</label><input id="funit" placeholder="2B" oninput="render()"></div><div class="field"><label>Lot #</label><input id="flot" placeholder="42" oninput="render()"></div>
           <div class="field"><label>Date</label><input id="fdt" type="date" oninput="render()"></div>
           <div class="field"><label>Valid Until</label><input id="fvl" type="date" oninput="render()"></div>
         </div>
@@ -964,6 +964,22 @@ function render() {
       <div class="doc-meta-item"><label>Date</label><span>${fd(gv('fdt'))}</span></div>
       <div class="doc-meta-item"><label>Valid Until</label><span>${fd(gv('fvl'))}</span></div>
     </div>
+    <!-- JOB REF -->
+    ${(gv('fbuilder')||gv('fsite')||gv('fmaster')||gv('flot')||gv('fblock')||gv('funit'))?`
+    <div class="doc-info" style="margin-top:10px">
+      <div class="doc-info-box" style="flex:1">
+        <div class="doc-info-box-hdr">Job Reference</div>
+        <div class="doc-info-box-body">
+          ${gv('fmaster')?`<div class="doc-info-row"><label>Master #:</label><span>${esc(gv('fmaster'))}</span></div>`:''}
+          ${gv('fbuilder')?`<div class="doc-info-row"><label>Builder:</label><span>${esc(gv('fbuilder'))}</span></div>`:''}
+          ${gv('fsite')?`<div class="doc-info-row"><label>Site:</label><span>${esc(gv('fsite'))}</span></div>`:''}
+          ${gv('fblock')?`<div class="doc-info-row"><label>Block #:</label><span>${esc(gv('fblock'))}</span></div>`:''}
+          ${gv('flot')?`<div class="doc-info-row"><label>Lot #:</label><span>${esc(gv('flot'))}</span></div>`:''}
+          ${gv('funit')?`<div class="doc-info-row"><label>Unit #:</label><span>${esc(gv('funit'))}</span></div>`:''}
+        </div>
+      </div>
+    </div>`:''}
+    <!-- END JOB REF -->
 
     <!-- INFO -->
     <div class="doc-info">
@@ -1064,7 +1080,7 @@ function render() {
 // ─── SAVE / LOAD ───
 function getState() {
   return {
-    fen:gv('fen'),fmaster:gv('fmaster')||'',funit:gv('funit')||'',flot:gv('flot')||'',fbuilder:gv('fbuilder')||'',fsite:gv('fsite')||'',fdt:gv('fdt'),fvl:gv('fvl'),ftx:gv('ftx'),fdc:gv('fdc'),
+    fen:gv('fen'),fmaster:gv('fmaster')||'',funit:gv('funit')||'',flot:gv('flot')||'',fblock:gv('fblock')||'',fbuilder:gv('fbuilder')||'',fsite:gv('fsite')||'',fdt:gv('fdt'),fvl:gv('fvl'),ftx:gv('ftx'),fdc:gv('fdc'),
     fnm:gv('fnm'),fco:gv('fco'),fph:gv('fph'),fem:gv('fem'),
     fad:gv('fad'),fcy:gv('fcy'),fpv:gv('fpv'),fpc:gv('fpc'),
     ftr:gv('ftr'), scopes, lines, sc, lc

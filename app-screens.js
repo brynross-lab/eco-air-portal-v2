@@ -308,8 +308,8 @@ SHEETS.woActions=function(e){
   return {title:woLotLabel(w)||'Work order',sub:[getB(w),getS(w)].filter(Boolean).join(' · '),
     body:'<div class="sec"><span class="pill '+st[0]+'">'+st[1]+'</span><div class="card">'+rows.map(function(r){return '<div class="stat"><div><span>'+h(r[0])+'</span>'+h(r[1])+'</div></div>';}).join('')+'</div></div>'
       +'<div class="sec"><button class="btn wide big" onclick="App.pop();openWOInTool(R('+reg(w)+'))">Open in Work Order builder</button>'
-      +(canShare?'<button class="btn ghost wide" onclick="App.shareDoc(\'saved_workorder\',\''+h(w._id)+'\',\'workorder\')">Share with all staff</button>':'')
-      +(isAdm()?'<button class="btn danger wide" onclick="App.trashWO(\''+h(w._id)+'\')">Move to trash</button>':'')+'</div>'};
+      +(canShare?'<button class="btn ghost wide" onclick="App.shareDoc(\'saved_workorder\',\''+h(docId(w))+'\',\'workorder\')">Share with all staff</button>':'')
+      +(isAdm()?'<button class="btn danger wide" onclick="App.trashWO(\''+h(docId(w))+'\')">Move to trash</button>':'')+'</div>'};
 };
 App.trashWO=async function(id){
   var ok=await ask('Move to trash?','The work order is hidden everywhere. You can restore it from Trash in the current portal.',[{label:'Cancel',value:false,style:'ghost'},{label:'Move to trash',value:true,style:'danger'}]);
@@ -351,7 +351,7 @@ SHEETS.approvals=function(){
     return '<div class="card" style="padding:12px;display:flex;flex-direction:column;gap:8px"><b>'+h([getB(w),getS(w),woLot(w)?'Lot '+woLot(w):''].filter(Boolean).join(' › ')||w._id)+'</b>'
       +'<span class="s">By '+h(w._owner||'')+(w._savedAt?' · '+fmtDate(w._savedAt):'')+(woTotal(w)?' · '+money(woTotal(w)):'')+'</span>'
       +(orig.snapshot?woDiff(w,orig):'<p class="s">Original not found, so changes can\'t be compared.</p>')
-      +'<div class="strip"><button class="btn danger mini" onclick="App.rejectEdit(\''+h(w._id)+'\')">Reject</button><button class="btn mini" onclick="App.approveEdit(\''+h(w._id)+'\')">Approve</button><button class="btn ghost mini" onclick="openWOInTool(R('+reg(w)+'))">Open</button></div></div>';
+      +'<div class="strip"><button class="btn danger mini" onclick="App.rejectEdit(\''+h(docId(w))+'\')">Reject</button><button class="btn mini" onclick="App.approveEdit(\''+h(docId(w))+'\')">Approve</button><button class="btn ghost mini" onclick="openWOInTool(R('+reg(w)+'))">Open</button></div></div>';
   }).join(''):'<p class="s">No edits waiting.</p>')+'</div>';
   html+='<div class="sec"><h3>Share requests</h3>'+(shares.length?shares.map(function(d){
     var sn=d.snapshot||{};
@@ -365,13 +365,14 @@ SHEETS.approvals=function(){
 App.approveEdit=async function(id){
   await save(async function(){
     var snap=await DB.collection('saved_workorder').doc(id).get();if(!snap.exists)throw new Error('Pending edit not found.');
-    var d=snap.data(),target=d._pendingEditOf;if(!target)throw new Error('No original work order ID.');
+    var d=snap.data(),target=d._pendingEditOf||(d._id&&d._id!==id?d._id:'');if(!target)throw new Error('This edit doesn\'t say which work order it changes. Open it and save it as a new work order instead.');
     var clean=Object.assign({},d);delete clean._pendingEdit;delete clean._pendingEditOf;
     clean._approvedAt=new Date().toISOString();clean._approvedBy=meUser()||'admin';
     await DB.collection('saved_workorder').doc(String(target).replace(/[/.]/g,'_')).set(clean);
     await DB.collection('saved_workorder').doc(id).delete();
     _logActivity('approved','WO edit: '+target);
   },'Edit approved. Changes are live.');
+  await loadReviews().catch(function(){});changed();
 };
 App.rejectEdit=async function(id){
   var ok=await ask('Reject this edit?','The original work order stays as it is.',[{label:'Cancel',value:false,style:'ghost'},{label:'Reject',value:true,style:'danger'}]);if(!ok)return;

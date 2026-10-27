@@ -422,7 +422,7 @@ SHEETS.lot=function(e){
     +tplWOs.map(function(w){return '<div class="card tpl" style="padding:10px 12px"><div class="sec-h"><b>'+h(woTypeLabel(w))+'</b><span class="pill ok">From master lot</span></div><p class="s">'+h([woInstaller(w),fmtDay(woDate(w)),woTotal(w)?money(woTotal(w)):''].filter(Boolean).join(' · '))+'</p>'
       +'<button class="btn mini" style="margin-top:8px" onclick="App.copyFromMaster(R('+reg(w)+'))">Copy to this lot</button></div>';}).join('')
     +(wos.length?'<div class="card">'+wos.map(function(w){var ws=woStatus(w);return '<div class="lrow"><button class="lmain" onclick="openWOInTool(R('+reg(w)+'))"><span class="top"><b>'+h(woTypeLabel(w))+'</b>'+(woTotal(w)?'<b class="amt">'+money(woTotal(w))+'</b>':'')+'</span><span class="s">'+h([w.masterNum||w.jobNum,woInstaller(w),fmtDay(woDate(w))].filter(Boolean).join(' · '))+'</span><span class="pill '+ws[0]+'">'+ws[1]+'</span></button>'
-      +(admin?'<button class="btn ghost mini" onclick="App.unlinkWO(\''+h(w._id)+'\')">Unlink</button>':'<span class="chev">›</span>')+'</div>';}).join('')+'</div>':(tplWOs.length?'':'<p class="s">No work order for this lot yet.</p>'))+'</div>';
+      +(admin?'<button class="btn ghost mini" onclick="App.unlinkWO(\''+h(docId(w))+'\')">Unlink</button>':'<span class="chev">›</span>')+'</div>';}).join('')+'</div>':(tplWOs.length?'':'<p class="s">No work order for this lot yet.</p>'))+'</div>';
   // masters
   if(model){
     var showTpl=!isMaster&&!ownMasters.length;
@@ -565,7 +565,7 @@ SHEETS.copyWO=function(e){
 App.doCopyWO=async function(){
   var e=curSheet(),f=findLot(e.mapId,e.key);if(!f)return;var inst=String(e.d.installer||'').trim();
   var ok=await save(async function(){
-    var src=await DB.collection('saved_workorder').doc(e.w._id).get();if(!src.exists)throw new Error('Could not find the template work order.');
+    var src=await DB.collection('saved_workorder').doc(docId(e.w)).get();if(!src.exists)throw new Error('Could not find the template work order.');
     var wd=src.data(),snap=Object.assign({},wd.snapshot||{});
     snap.fl=String(f.lot.num||'');snap.fblock=f.lot.block||'';snap.funit=f.lot.unit||'';if(inst)snap.fi=inst;snap.fdate=todayISO();
     var nw=Object.assign({},wd,{lot:String(f.lot.num||''),block:f.lot.block||'',unit:f.lot.unit||'',installer:inst||wd.installer||'',status:'pending',snapshot:snap,_savedAt:new Date().toISOString(),_copiedFromMaster:e.w._id,builder:wd.builder||f.map.builder||'',site:wd.site||f.map.site||''});

@@ -185,7 +185,9 @@ async function save(fn,okMsg){
 /* ───────────────────────── data ───────────────────────── */
 var _subs=[],_changedT=null;
 function changed(){clearTimeout(_changedT);_changedT=setTimeout(function(){if(!CURRENT_USER)return;S.jobs=D.jobs;S.clients=D.clients;renderScreen();refreshLiveSheets();if(typeof searchRefresh==='function')searchRefresh();updateBadges();},120);}
-function snapList(snap,idKey){return snap.docs.map(function(d){var o={};o[idKey||'id']=d.id;return Object.assign(o,d.data());});}
+// __doc is always the real document id (a record's own _id field can differ, e.g. a pending edit carries the original's _id)
+function snapList(snap,idKey){return snap.docs.map(function(d){var o={};o[idKey||'id']=d.id;o=Object.assign(o,d.data());o.__doc=d.id;return o;});}
+function docId(x){return x&&(x.__doc||x._id||x.id)||'';}
 function watch(q,fn,label){
   try{_subs.push(q.onSnapshot(function(s){fn(s);changed();},function(e){console.warn(label||'listener',e&&e.message);}));}catch(e){console.warn(label,e);}
 }

@@ -38,7 +38,7 @@ window.eaReadOnlyDB=eaReadOnlyDB;
 
 /* ───────────────────────── open a builder ───────────────────────── */
 async function openToolCore(key,title,docType,client,jobId){
-  var html;
+  var html;_measureEditing=null;
   try{html=await loadTool(key);}catch(e){showToast('Could not load the '+title+'. Check the connection and try again.',true);return;}
   if(SKINNED[key]){var skin=await loadSkin();if(skin)html=html.replace('</head>','<style id="v2-skin">'+skin+'</style></head>');}
   if(key==='measure'||key==='workorder'){
@@ -120,6 +120,7 @@ function openMasterInWO(masterNum){
 }
 function editMasterTemplate(master){
   openToolCore('measure','Measure sheet · '+(master.label||masterKey(master))).then(function(){
+    _measureEditing=master.id?{id:master.id,slot:slotOfDoc(master)}:null;
     whenToolReady(function(){postToTool({type:'LOAD_MASTER',data:master});});
   });
 }
@@ -189,12 +190,51 @@ function syncLists(b,s){
     if(chg)return DB.collection('meta').doc('lists').set({builders:lb,sites:ls},{merge:true});
   }).catch(function(){});
 }
+/* Masters are filed per lot and type: one Basement and one Rough-in per lot, and as many
+   Custom masters as you save. A master with no type and no lot keeps the old one-per-number key. */
+var _measureEditing=null;   // the saved master open in the Measure sheet, if any
+function masterSlot(mk,flds){
+  var lot=String(flds.flot||'').trim(),t=flds.fmtype||'';
+  var tl=t?(MASTER_TYPES[t]||(flds.fmtypec||'').trim()||'Custom'):'';
+  var label=[mk,lot?'Lot '+lot:'',tl].filter(Boolean).join(' · ');
+  var id=[mk,lot?'L'+lot:'',t==='custom'?'custom_'+lc(tl):t].filter(Boolean).join('__').replace(/[.\/\s#·]+/g,'_');
+  return {lot:lot,type:t,typeLabel:tl,label:label,id:id};
+}
+function slotOfDoc(m){var t=masterType(m);return {lot:String(masterLot(m)||'').trim(),type:t?t.key:'',typeLabel:t?t.label:''};}
+var _measureSaving=Promise.resolve();
 function saveMeasureToFirestore(mk,flds,fd){
-  var safe=mk.replace(/[.\/\s]/g,'_');
+  // one save at a time, so a PDF save and a job save of the same sheet land on the same record
+  _measureSaving=_measureSaving.then(function(){return saveMeasureNow(mk,flds,fd);}).catch(function(){});
+  return _measureSaving;
+}
+async function saveMeasureNow(mk,flds,fd){
+  var slot=masterSlot(mk,flds),id=slot.id,ed=_measureEditing;
+  if(ed){
+    var was=ed.slot;
+    // Saving the master you opened: keep the same record unless you moved it to another lot or type
+    if(!was.type||(was.lot===slot.lot&&was.type===slot.type&&lc(was.typeLabel)===lc(slot.typeLabel)))id=ed.id;
+  }
+  var edId=ed&&ed.id;
+  if(slot.type==='custom'&&id!==edId){
+    // a new custom never replaces another one
+    var base=id,n=2;while(D.masters.some(function(x){return x.id===id&&!x._deleted;}))id=base+'_'+(n++);
+  }else if(id!==edId&&slot.type){
+    var clash=D.masters.find(function(x){return x.id===id&&!x._deleted;});
+    if(clash){
+      var ok=await ask('Replace the '+slot.typeLabel+' master'+(slot.lot?' for lot '+h(slot.lot):'')+'?','<b>'+h(slot.label)+'</b> is already saved'+(clash._savedAt?' ('+fmtDate(clash._savedAt)+')':'')+'. Each lot keeps one '+slot.typeLabel+' master. To keep both, set this one to Custom and give it a name.',
+        [{label:'Cancel',value:false,style:'ghost'},{label:'Replace it',value:true,style:'danger'}]);
+      if(!ok){showToast('Not saved.');return;}
+    }
+  }
+  _measureEditing={id:id,slot:slot};
   var doc=_buildMeasureDoc(mk,flds,fd);doc._docType='measure';doc._savedBy=meName()||'staff';
-  if(flds.fmtype){doc.masterType=flds.fmtype;doc.masterTypeLabel=MASTER_TYPES[flds.fmtype]||(flds.fmtypec||'').trim()||'Custom';}
-  DB.collection('saved_masters').doc(safe).set(doc,{merge:true}).then(function(){showToast('Measure sheet saved. Everyone can see it.');}).catch(function(err){if(err&&err.code!=='read-only')showToast('Could not save the measure sheet: '+err.message,true);});
-  DB.collection('saved_measure').doc(safe).set(doc,{merge:true}).catch(function(){});
+  doc._key=slot.label;doc.label=slot.label;doc.num=mk;doc.masterNum=mk;
+  doc.masterType=slot.type;doc.masterTypeLabel=slot.typeLabel;
+  try{
+    await DB.collection('saved_masters').doc(id).set(doc,{merge:true});
+    showToast((slot.typeLabel||'Master')+' saved: '+slot.label);
+  }catch(err){if(err&&err.code!=='read-only')showToast('Could not save the measure sheet: '+err.message,true);}
+  DB.collection('saved_measure').doc(id).set(doc,{merge:true}).catch(function(){});
 }
 function modelDuplicateChoice(modelNum,lotNum){
   return ask('This model already has a work order','A work order for model <b>'+h(modelNum)+'</b> already exists. How should this one be saved'+(lotNum?' for lot '+h(lotNum):'')+'?',

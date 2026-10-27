@@ -168,10 +168,18 @@ function installWriteGuard(){
   }
 }
 /* Run a save; returns true on success. Shows a clear message when saving is off or fails. */
+var LAST_SAVE_ERR='';
+function friendlyErr(e){
+  var m=String(e&&e.message||e||'');
+  if(e&&e.code==='permission-denied'||/insufficient permissions/i.test(m))return 'the database refused it (permission denied). The Firestore security rules are blocking this kind of record.';
+  if(e&&e.code==='unavailable'||/offline|network/i.test(m))return 'no connection to the database. Check your internet and try again.';
+  return m;
+}
 async function save(fn,okMsg){
+  LAST_SAVE_ERR='';
   if(READ_ONLY){notifyReadOnly();return false;}
   try{await fn();if(okMsg)showToast(okMsg);return true;}
-  catch(e){if(e&&e.code==='read-only')return false;console.error(e);showToast('Could not save: '+(e&&e.message||e),true);return false;}
+  catch(e){if(e&&e.code==='read-only')return false;console.error(e);LAST_SAVE_ERR=friendlyErr(e);showToast('Could not save: '+LAST_SAVE_ERR,true);return false;}
 }
 
 /* ───────────────────────── data ───────────────────────── */

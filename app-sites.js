@@ -487,17 +487,21 @@ SHEETS.addFlag=function(e){
 App.saveFlag=async function(){
   var e=curSheet(),d=e.d;if(!String(d.text||'').trim())return rerender('Add a note describing the problem.');
   if(READ_ONLY){notifyReadOnly();return;}
+  if(!e.key)return rerender('This flag isn\'t linked to a lot. Close it and add the flag from the lot.');
+  if(e.busy)return;e.busy=true;
+  var btn=document.querySelector('.sheet:last-child .sh-foot .btn:not(.ghost)');if(btn){btn.disabled=true;btn.textContent='Saving…';}
   var file=(document.getElementById('flagPhoto')||{}).files;file=file&&file[0];
   var ok=await save(async function(){
     var photoUrl='';
     if(file&&STORAGE){try{var ref=STORAGE.ref('flag_photos/'+e.key+'_'+Date.now()+'_'+file.name.replace(/[^a-zA-Z0-9._-]/g,'_'));var up=await ref.put(file);photoUrl=await up.ref.getDownloadURL();}catch(x){showToast('Photo upload failed. Saving the flag without it.',true);}}
-    var flag={id:'flag_'+Date.now(),type:d.type,text:d.text.trim(),materials:String(d.materials||'').trim(),photoUrl:photoUrl,createdAt:new Date().toISOString(),createdBy:meName(),resolved:false};
-    var ref2=DB.collection('lot_data').doc(e.key),snap=await ref2.get();
-    var list=snap.exists?(snap.data().flags||[]):[];list.push(flag);
-    if(snap.exists)await ref2.update({flags:list});else await ref2.set({flags:list});
-    D.lotData[e.key]=Object.assign({},snap.exists?snap.data():{},{flags:list});
+    var flag={id:'flag_'+Date.now(),type:d.type||'unfinished',text:String(d.text).trim(),materials:String(d.materials||'').trim(),photoUrl:photoUrl||'',createdAt:new Date().toISOString(),createdBy:meName()||'',resolved:false};
+    // Add to the lot's flag list in one write (no read first), same record shape as the current portal
+    await DB.collection('lot_data').doc(e.key).set({flags:firebase.firestore.FieldValue.arrayUnion(flag)},{merge:true});
+    var cur=D.lotData[e.key]||{};D.lotData[e.key]=Object.assign({},cur,{flags:(cur.flags||[]).concat([flag])});
   },'Flag added');
+  e.busy=false;
   if(ok){popSheet();changed();}
+  else rerender('Couldn\'t save the flag: '+(LAST_SAVE_ERR||'unknown error')+(/permission/i.test(LAST_SAVE_ERR)?'':' Your note is still here, so you can try again.'));
 };
 App.resolveFlag=async function(key,id){
   var ok=await save(async function(){

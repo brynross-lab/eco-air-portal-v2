@@ -167,6 +167,10 @@ input:focus,select:focus{border-color:var(--G);background:#fff}
         <div class="fg"><label>AC</label><input id="fac" placeholder="Tonnage / model" oninput="render()"></div>
         <div class="fg"><label>Date Measured</label><input id="fdate" type="date" oninput="render()"></div>
       </div>
+      <div class="fr">
+        <div class="fg"><label>Master type</label><select id="fmtype" onchange="mtypeSync();render()"><option value="">Not set</option><option value="basement">Basement</option><option value="rough">Rough-in</option><option value="custom">Custom</option></select></div>
+        <div class="fg" id="fmtypecWrap" style="display:none"><label>Custom type name</label><input id="fmtypec" placeholder="e.g. Garage, Addition" oninput="render()"></div>
+      </div>
       <!-- hidden legacy fields preserved for old save compatibility -->
       <input type="hidden" id="fplenum"><input type="hidden" id="fphone"><input type="hidden" id="femail">
       <input type="hidden" id="faddr"><input type="hidden" id="fcity"><input type="hidden" id="fprov"><input type="hidden" id="fpost">
@@ -969,13 +973,13 @@ function render(){
 
   let html=`<div class="pv-hdr">
     <img src="data:image/png;base64,${LOGO_B64}" style="height:36px;object-fit:contain">
-    <div style="margin-left:10px;flex:1"><div style="font-size:13px;font-weight:800;letter-spacing:1.5px;color:#1b5e38;font-family:'Barlow Condensed',sans-serif">MEASURE SHEET</div></div>
+    <div style="margin-left:10px;flex:1"><div style="font-size:13px;font-weight:800;letter-spacing:1.5px;color:#1b5e38;font-family:'Barlow Condensed',sans-serif">MEASURE SHEET${mtypeLabel()?' · '+mtypeLabel().toUpperCase():''}</div></div>
     <div class="pv-date">${fdate}</div>
   </div>
   <div class="pv-info">
     ${ic('Master #',master)}${ic('Builder',fname)}${ic('Site',fsite)}
     ${ic('Lot #',lot)}${ic('Model',fmodel)}${ic('Date Measured',fdate)}
-    ${ic('Furnace',ffurnace)}${ic('AC',fac)}${ic('','&nbsp;')}
+    ${ic('Furnace',ffurnace)}${ic('AC',fac)}${ic('Type',mtypeLabel())}
   </div>`;
 
   // Fittings column
@@ -1059,7 +1063,10 @@ function render(){
   document.getElementById('prev').innerHTML=html;
 }
 
-const FIELDS=['fmaster','flot','ffurnace','fplenum','fname','fphone','femail','faddr','fcity','fprov','fpost','fsite','fmodel','fdate','fac'];
+const FIELDS=['fmaster','flot','ffurnace','fplenum','fname','fphone','femail','faddr','fcity','fprov','fpost','fsite','fmodel','fdate','fac','fmtype','fmtypec'];
+// Master type: Basement, Rough-in or a custom name
+function mtypeSync(){var w=document.getElementById('fmtypecWrap');if(w)w.style.display=gv('fmtype')==='custom'?'':'none';}
+function mtypeLabel(){var t=gv('fmtype');return t==='basement'?'Basement':t==='rough'?'Rough-in':t==='custom'?(gv('fmtypec').trim()||'Custom'):'';}
 
 function collectJobData(){
   return{
@@ -1080,6 +1087,8 @@ function collectJobData(){
 
 function doLoad(data){
   Object.entries(data.fields).forEach(([id,v])=>{const el=document.getElementById(id);if(el)el.value=v;});
+  if(!data.fields.fmtype){var _t=document.getElementById('fmtype');if(_t)_t.value='';var _c=document.getElementById('fmtypec');if(_c)_c.value='';}
+  mtypeSync();
   Object.keys(SEC_META).forEach(id=>document.getElementById(id).innerHTML='');
   data.items.forEach(item=>addItem(item.container,item.type,item));
   render();
@@ -1325,9 +1334,10 @@ async function savePDF(returnB64=false){
     iCell(M+W3,y+IR,W3,'MODEL:',gv('fmodel'),16);
     iCell(M+2*W3,y+IR,W3,'DATE MEASURED:',dateFmt,28);
     // Row 3: FURNACE | AC
-    ln(M+HW,y+IR*2,M+HW,y+IR*3,0.35,BLK);
-    iCell(M,y+IR*2,HW,'FURNACE:',gv('ffurnace'),18);
-    iCell(M+HW,y+IR*2,HW,'AC:',gv('fac'),10);
+    [M+W3,M+2*W3].forEach(vx=>ln(vx,y+IR*2,vx,y+IR*3,0.35,BLK));
+    iCell(M,y+IR*2,W3,'FURNACE:',gv('ffurnace'),18);
+    iCell(M+W3,y+IR*2,W3,'AC:',gv('fac'),10);
+    iCell(M+2*W3,y+IR*2,W3,'TYPE:',mtypeLabel(),13);
     // Row 4: column headers
     ln(xDUC,y+IR*3,xDUC,y+IR*4,0.4,BLK);ln(xBLK,y+IR*3,xBLK,y+IR*4,0.4,BLK);ln(xRGT,y+IR*3,xRGT,y+IR*4,0.4,BLK);
     iCell(M,y+IR*3,FIT_W,'','',0);
@@ -1577,6 +1587,8 @@ window.addEventListener('message',async function(e){
       // snapshot itself may be flat fields from old WO masters
       var formData=(fd.snapshot&&fd.snapshot._formData)||fd.formData||fd.snapshot||fd;
       if(formData&&(formData.fields||formData.items)) doLoad(formData);
+      // Type set from the portal's master list wins when the form has none saved
+      if(fd.masterType&&!gv('fmtype')){document.getElementById('fmtype').value=fd.masterType;if(fd.masterType==='custom')document.getElementById('fmtypec').value=fd.masterTypeLabel||'';mtypeSync();render();}
     }
   }
 

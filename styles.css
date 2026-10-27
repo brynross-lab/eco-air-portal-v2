@@ -221,3 +221,10 @@ body.ro .sh-head{padding-top:6px}
 .droppable.over{outline-color:var(--accent);background:var(--accent-soft)}
 .drophint{margin:-4px 0 8px;font-size:13px}
 @media (hover:none){.drophint{display:none}}
+
+/* master type labels */
+.pill.mtype{background:var(--accent-soft);color:var(--accent-dark)}
+.pill.mt-basement{background:#E6EEF8;color:#1F4E89}
+.pill.mt-rough{background:#FBEFDF;color:#8A4B0B}
+.lrow.choice{width:100%;background:none;border:0;text-align:left;font:inherit;color:inherit;cursor:pointer}
+.lrow.choice[aria-pressed="true"]{background:var(--accent-soft)}

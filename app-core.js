@@ -68,6 +68,14 @@ function woId(w){return w._id||w._key||w.num||w.id||'';}
 function woLotLabel(w){var p=[];var b=woBlock(w),l=woLot(w),u=woUnit(w);if(b)p.push('Block '+b);if(l)p.push('Lot '+l);if(u)p.push('Unit '+u);return p.join(' · ');}
 function masterKey(m){return m._key||m.num||m.id||'';}
 function masterModel(m){return m.fmodel||(m.fields&&m.fields.fmodel)||(m.snapshot&&(m.snapshot.fmodel||m.snapshot.fm))||'';}
+var MASTER_TYPES={basement:'Basement',rough:'Rough-in'};
+/* Master type: set on the record, or saved in the measure form. Returns {key,label} or null. */
+function masterType(m){
+  var f=(m.snapshot&&m.snapshot._formData&&m.snapshot._formData.fields)||(m.fields)||{};
+  var k=m.masterType||f.fmtype||'';if(!k)return null;
+  return {key:k,label:MASTER_TYPES[k]||m.masterTypeLabel||(f.fmtypec||'').trim()||'Custom'};
+}
+function masterTypePill(m){var t=masterType(m);return t?'<span class="pill mtype mt-'+h(t.key)+'">'+h(t.label)+'</span>':'';}
 function masterLot(m){return m.lot||(m.snapshot&&m.snapshot.flot)||(m.fields&&m.fields.flot)||'';}
 // Staff visibility for work orders and masters, as in the current portal's _canSee().
 function canSee(w){

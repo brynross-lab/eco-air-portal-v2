@@ -192,6 +192,7 @@ function syncLists(b,s){
 function saveMeasureToFirestore(mk,flds,fd){
   var safe=mk.replace(/[.\/\s]/g,'_');
   var doc=_buildMeasureDoc(mk,flds,fd);doc._docType='measure';doc._savedBy=meName()||'staff';
+  if(flds.fmtype){doc.masterType=flds.fmtype;doc.masterTypeLabel=MASTER_TYPES[flds.fmtype]||(flds.fmtypec||'').trim()||'Custom';}
   DB.collection('saved_masters').doc(safe).set(doc,{merge:true}).then(function(){showToast('Measure sheet saved. Everyone can see it.');}).catch(function(err){if(err&&err.code!=='read-only')showToast('Could not save the measure sheet: '+err.message,true);});
   DB.collection('saved_measure').doc(safe).set(doc,{merge:true}).catch(function(){});
 }

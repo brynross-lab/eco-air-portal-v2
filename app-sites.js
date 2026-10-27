@@ -199,13 +199,37 @@ function siteWOsTab(site){
 }
 function siteMastersTab(site){
   if(!site.masters.length)return '<div class="card"><p class="empty">No masters saved for this site.</p></div>';
-  return '<div class="card">'+site.masters.map(function(m){
-    var mdl=masterModel(m),canShare=!isAdm()&&!m._shared&&m._owner===meUser();
-    return '<div class="lrow"><button class="lmain" onclick="editMasterTemplate(R('+reg(m)+'))"><span class="top"><b>'+h(m.label||masterKey(m))+'</b></span><span class="s">'+h([mdl?'Model '+mdl:'',masterLot(m)?'Lot '+masterLot(m):'',m._savedAt?'Saved '+fmtDate(m._savedAt):''].filter(Boolean).join(' · '))+'</span></button>'
+  var f=SV.mtype||'',list=site.masters.filter(function(m){var t=masterType(m);return !f||(f==='none'?!t:t&&t.key===f);});
+  var count=function(k){return site.masters.filter(function(m){var t=masterType(m);return k==='none'?!t:t&&t.key===k;}).length;};
+  var opts=[['','All'],['basement','Basement'],['rough','Rough-in'],['custom','Custom'],['none','No type']].filter(function(o){return !o[0]||count(o[0]);});
+  return (opts.length>2?'<div class="chips" role="group" aria-label="Master type" style="margin-bottom:12px">'+opts.map(function(o){return '<button aria-pressed="'+(o[0]===f)+'" onclick="App.mtypeFilter(\''+o[0]+'\')">'+o[1]+(o[0]?' ('+count(o[0])+')':'')+'</button>';}).join('')+'</div>':'')
+    +(list.length?'<div class="card">'+list.map(function(m){
+    var mdl=masterModel(m),canShare=!isAdm()&&!m._shared&&m._owner===meUser(),canLabel=isAdm()||m._owner===meUser();
+    return '<div class="lrow"><button class="lmain" onclick="editMasterTemplate(R('+reg(m)+'))"><span class="top"><b>'+h(m.label||masterKey(m))+'</b>'+masterTypePill(m)+'</span><span class="s">'+h([mdl?'Model '+mdl:'',masterLot(m)?'Lot '+masterLot(m):'',m._savedAt?'Saved '+fmtDate(m._savedAt):''].filter(Boolean).join(' · '))+'</span></button>'
+      +(canLabel?'<button class="btn ghost mini" onclick="App.labelMaster(R('+reg(m)+'))">'+(masterType(m)?'Change type':'Set type')+'</button>':'')
       +(canShare?'<button class="btn ghost mini" onclick="App.shareDoc(\'saved_masters\',\''+h(masterKey(m))+'\',\'master\')">Share</button>':'')
       +(isAdm()?'<button class="btn ghost mini" aria-label="Remove master" onclick="App.removeMaster(\''+h(m.id||masterKey(m))+'\')">Remove</button>':'')+'</div>';
-  }).join('')+'</div>';
+  }).join('')+'</div>':'<div class="card"><p class="empty">No masters of this type.</p></div>');
 }
+App.mtypeFilter=function(k){SV.mtype=k||'';changed();};
+App.labelMaster=function(m){var t=masterType(m);push({type:'masterType',m:m,d:{key:t?t.key:'',custom:t&&t.key==='custom'?t.label:''}});};
+SHEETS.masterType=function(e){
+  var opt=function(k,l,s2){return '<button class="lrow choice" aria-pressed="'+(e.d.key===k)+'" onclick="curSheet().d.key=\''+k+'\';rerender()"><span class="lmain"><b>'+l+'</b>'+(s2?'<span class="s">'+s2+'</span>':'')+'</span><span class="chev">'+(e.d.key===k?'✓':'')+'</span></button>';};
+  return {title:'Master type',sub:masterKey(e.m),body:'<div class="sec"><div class="card">'
+    +opt('basement','Basement')+opt('rough','Rough-in')+opt('custom','Custom','Name it yourself')+opt('','No type')+'</div>'
+    +(e.d.key==='custom'?'<div style="margin-top:12px">'+fld('Custom type name','custom','text','e.g. Garage, Addition')+'</div>':'')+'</div>',
+    foot:'<button class="btn ghost" onclick="App.pop()">Cancel</button><button class="btn" onclick="App.saveMasterType()">Save</button>'};
+};
+App.saveMasterType=async function(){
+  var e=curSheet(),m=e.m,k=e.d.key||'',label=k==='custom'?(String(e.d.custom||'').trim()||'Custom'):(MASTER_TYPES[k]||'');
+  var inMasters=D.masters.indexOf(m)>=0,coll=inMasters?'saved_masters':'saved_measure';
+  var id=m.id?String(m.id):String(masterKey(m)).replace(/[\/.]/g,'_');   // the record's real document id
+  var upd={masterType:k,masterTypeLabel:label};
+  var fd=m.snapshot&&m.snapshot._formData;
+  if(fd&&fd.fields){upd['snapshot._formData.fields.fmtype']=k;upd['snapshot._formData.fields.fmtypec']=k==='custom'?label:'';}
+  var ok=await save(function(){return DB.collection(coll).doc(id).update(upd);},k?'Labelled '+label:'Type cleared');
+  if(ok){Object.assign(m,{masterType:k,masterTypeLabel:label});if(fd&&fd.fields){fd.fields.fmtype=k;fd.fields.fmtypec=k==='custom'?label:'';}popSheet();changed();}
+};
 function siteFilesTab(site){
   var docs=D.docs.filter(function(d){return d.builder===site.builder&&d.site===site.site;});
   var by={};docs.forEach(function(d){var l=d.lot||'General';(by[l]=by[l]||[]).push(d);});
@@ -403,7 +427,7 @@ SHEETS.lot=function(e){
     var showTpl=!isMaster&&!ownMasters.length;
     html+='<div class="sec"><h3>Masters for '+h(model)+'</h3>'+(masters.length?'<div class="card">'+masters.map(function(m){
       var ref=mm&&mm.masterKey===masterKey(m);
-      return '<div class="lrow"><button class="lmain" onclick="App.openMasterForLot(R('+reg(m)+'))"><span class="top"><b>'+h(masterKey(m))+'</b>'+(showTpl?'<span class="pill ok">From master lot</span>':ref?'<span class="pill ok">Reference</span>':'')+'</span><span class="s">'+h(m._savedAt?'Saved '+fmtDate(m._savedAt):'')+'</span></button>'
+      return '<div class="lrow"><button class="lmain" onclick="App.openMasterForLot(R('+reg(m)+'))"><span class="top"><b>'+h(masterKey(m))+'</b>'+masterTypePill(m)+(showTpl?'<span class="pill ok">From master lot</span>':ref?'<span class="pill ok">Reference</span>':'')+'</span><span class="s">'+h(m._savedAt?'Saved '+fmtDate(m._savedAt):'')+'</span></button>'
         +(admin?'<button class="btn ghost mini" onclick="App.removeMaster(\''+h(m.id||masterKey(m))+'\')">Remove</button>':'<span class="chev">›</span>')+'</div>';
     }).join('')+'</div>':'<p class="s">No masters saved for model '+h(model)+' yet.</p>')+'</div>';
   }

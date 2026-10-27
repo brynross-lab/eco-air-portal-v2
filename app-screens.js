@@ -123,6 +123,7 @@ SCREENS.home = function(){
   var hr=new Date().getHours(),greet=hr<12?'Good morning':hr<17?'Good afternoon':'Good evening';
   var first=(meName()||'').split(' ')[0];
   var html='<p class="date">'+new Date().toLocaleDateString('en-CA',{weekday:'long',month:'long',day:'numeric'})+'</p><h1>'+h(greet+(first?', '+first:''))+'</h1>';
+  html+=searchBar();
   if(!D.loaded&&!D.wos.length)return html+'<div class="blk"><div class="card"><p class="empty">Loading your work…</p></div></div>';
 
   // Today: work orders dated today and jobs scheduled today
@@ -237,6 +238,7 @@ SCREENS.more = function(){
   var row=function(label,onclick,sub,badge){return '<div class="lrow"><button class="lmain" onclick="'+onclick+'"><span class="top"><b>'+label+'</b>'+(badge?'<span class="pill bad">'+badge+'</span>':'')+'</span>'+(sub?'<span class="s">'+sub+'</span>':'')+'</button><span class="chev">›</span></div>';};
   var html='<h1>More</h1>';
   html+='<div class="blk"><div class="card">'
+    +row('Search','App.search()','Every master and work order')
     +row('Invoices','App.invoices()',pl(D.invoices.length,'saved invoice'))
     +row('Jobs and clients','App.jobs()',pl(D.jobs.filter(jobVisible).length,'job'))
     +row('Flags','App.flags()',pl(openFlags().length,'open flag'))
@@ -635,3 +637,54 @@ App.backup=async function(){
     showToast('Backup downloaded ('+n+' records)');
   }catch(e){showToast('Backup failed: '+e.message,true);}
 };
+
+/* ───────────────────────── Search: every master and work order ───────────────────────── */
+function searchBar(){return '<button class="searchbar" onclick="App.search()"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search masters and work orders</button>';}
+// Words can be in any field and any order: "caivan 2450 bsmt", "lot 14 luis", "garage".
+function srchText(parts){return lc(parts.filter(Boolean).join(' '));}
+function woSearchText(w){
+  var s=woSnap(w);
+  return srchText([woLotLabel(w),'lot '+woLot(w),woTypeLabel(w),woTypeKey(w),getB(w),getS(w),s.fm,s.fmodel,s.fla,woInstaller(w),w.label,w.num,w.masterNum,s.fwo,woId(w),woStatus(w)[1],woDate(w),fmtDay(woDate(w))]);
+}
+function masterSearchText(m){
+  var t=masterType(m),f=(m.snapshot&&m.snapshot._formData&&m.snapshot._formData.fields)||m.fields||{};
+  return srchText([masterKey(m),m.label,getB(m)||f.fname,getS(m)||f.fsite,masterModel(m),masterLot(m)?'lot '+masterLot(m):'',t&&t.label,t&&t.key,f.ffurnace,f.fac,'master',m._savedAt&&fmtDate(m._savedAt)]);
+}
+function srchMatch(text,words){for(var i=0;i<words.length;i++)if(text.indexOf(words[i])<0)return false;return true;}
+var SRCH_LIMIT=40;
+App.search=function(kind){push({type:'search',q:'',kind:kind||'all',limit:SRCH_LIMIT});setTimeout(function(){var i=document.getElementById('srchQ');if(i)i.focus();},60);};
+SHEETS.search=function(e){
+  var chip=function(k,l){return '<button aria-pressed="'+(e.kind===k)+'" onclick="App.searchKind(\''+k+'\')">'+l+'</button>';};
+  return {title:'Search',sub:'Masters and work orders',body:'<div class="sec">'
+    +'<input type="search" id="srchQ" placeholder="Builder, site, lot, model, installer, type…" aria-label="Search masters and work orders" value="'+h(e.q)+'" oninput="App.searchQ(this.value)" autocomplete="off">'
+    +'<div class="chips" role="group" aria-label="Show" style="margin-top:10px">'+chip('all','All')+chip('wo','Work orders')+chip('master','Masters')+'</div>'
+    +'<div id="srchRes" style="margin-top:14px">'+searchResults(e)+'</div></div>'};
+};
+function searchResults(e){
+  // "lot 12", "block 3", "unit 2b" match that field exactly; other words match anywhere
+  var exact={},rest=lc(e.q).replace(/\b(lot|block|blk|unit)\s*#?\s*([a-z0-9-]+)/g,function(_,f,v){exact[f==='blk'?'block':f]=v;return ' ';});
+  var words=rest.split(/\s+/).filter(Boolean);
+  var exactOk=function(lot,block,unit){return (!exact.lot||lc(lot)===exact.lot)&&(!exact.block||lc(block)===exact.block)&&(!exact.unit||lc(unit)===exact.unit);};
+  if(!words.length&&!Object.keys(exact).length)return '<p class="s">Type to search all '+pl(visibleWOs().length,'work order')+' and '+pl(allMasters().filter(canSee).length,'master')+'. Use several words to narrow it down, like <b>caivan 2450 basement</b>.</p>';
+  var wos=e.kind==='master'?[]:visibleWOs().filter(function(w){return exactOk(woLot(w),woBlock(w),woUnit(w))&&srchMatch(woSearchText(w),words);})
+    .sort(function(a,b){return String(woDate(b)).localeCompare(String(woDate(a)));});
+  var ms=e.kind==='wo'?[]:allMasters().filter(canSee).filter(function(m){return exactOk(masterLot(m),m.block||(m.snapshot&&m.snapshot.fblock)||'',m.unit||(m.snapshot&&m.snapshot.funit)||'')&&srchMatch(masterSearchText(m),words);});
+  if(!wos.length&&!ms.length)return '<p class="empty">Nothing matches “'+h(e.q)+'”. Try fewer words.</p>';
+  var more=function(n,what){return n>e.limit?'<button class="btn ghost wide" style="margin-top:8px" onclick="App.searchMore()">Show more '+what+' ('+(n-e.limit)+' more)</button>':'';};
+  var html='';
+  if(ms.length)html+='<h3 style="margin:0 0 8px">Masters <span class="muted">('+ms.length+')</span></h3><div class="card">'+ms.slice(0,e.limit).map(function(m){
+      var where=[getB(m),getS(m)].filter(function(x){return x&&x!=='Unknown Builder'&&x!=='General';}).join(' · ');
+      return '<div class="lrow"><button class="lmain" onclick="editMasterTemplate(R('+reg(m)+'))"><span class="top"><b>'+h(m.label||masterKey(m))+'</b>'+masterTypePill(m)+'</span><span class="s">'+h([where,masterModel(m)?'Model '+masterModel(m):'',masterLot(m)?'Lot '+masterLot(m):'',m._savedAt?'Saved '+fmtDate(m._savedAt):''].filter(Boolean).join(' · '))+'</span></button><span class="chev">›</span></div>';
+    }).join('')+'</div>'+more(ms.length,'masters');
+  if(wos.length)html+='<h3 style="margin:'+(ms.length?'18px':'0')+' 0 8px">Work orders <span class="muted">('+wos.length+')</span></h3><div class="card">'+wos.slice(0,e.limit).map(function(w){
+      var st=woStatus(w),t=woTotal(w);
+      return '<div class="lrow"><button class="lmain" onclick="App.woActions(R('+reg(w)+'))"><span class="top"><b>'+h(woLotLabel(w)||w.label||w.masterNum||'Work order')+'</b>'+(t?'<b class="amt">'+money(t)+'</b>':'')+'</span>'
+        +'<span class="s">'+h([[getB(w),getS(w)].filter(Boolean).join(' · '),woTypeLabel(w),woSnap(w).fm?'Model '+woSnap(w).fm:'',woInstaller(w),fmtDay(woDate(w))].filter(Boolean).join(' · '))+'</span><span class="pill '+st[0]+'">'+st[1]+'</span></button><span class="chev">›</span></div>';
+    }).join('')+'</div>'+more(wos.length,'work orders');
+  return html;
+}
+function searchRefresh(){var e=curSheet();if(!e||e.type!=='search')return;var r=document.getElementById('srchRes');if(r)r.innerHTML=searchResults(e);}
+var _srchT=null;
+App.searchQ=function(v){var e=curSheet();if(!e||e.type!=='search')return;e.q=v;e.limit=SRCH_LIMIT;clearTimeout(_srchT);_srchT=setTimeout(searchRefresh,120);};
+App.searchKind=function(k){var e=curSheet();e.kind=k;e.limit=SRCH_LIMIT;rerender();var i=document.getElementById('srchQ');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}};
+App.searchMore=function(){var e=curSheet();e.limit+=SRCH_LIMIT;searchRefresh();};

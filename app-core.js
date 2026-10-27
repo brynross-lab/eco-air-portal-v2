@@ -176,7 +176,7 @@ async function save(fn,okMsg){
 
 /* ───────────────────────── data ───────────────────────── */
 var _subs=[],_changedT=null;
-function changed(){clearTimeout(_changedT);_changedT=setTimeout(function(){if(!CURRENT_USER)return;S.jobs=D.jobs;S.clients=D.clients;renderScreen();refreshLiveSheets();updateBadges();},120);}
+function changed(){clearTimeout(_changedT);_changedT=setTimeout(function(){if(!CURRENT_USER)return;S.jobs=D.jobs;S.clients=D.clients;renderScreen();refreshLiveSheets();if(typeof searchRefresh==='function')searchRefresh();updateBadges();},120);}
 function snapList(snap,idKey){return snap.docs.map(function(d){var o={};o[idKey||'id']=d.id;return Object.assign(o,d.data());});}
 function watch(q,fn,label){
   try{_subs.push(q.onSnapshot(function(s){fn(s);changed();},function(e){console.warn(label||'listener',e&&e.message);}));}catch(e){console.warn(label,e);}

@@ -94,7 +94,8 @@ function sitesRoot(idx){
   var active=sites.filter(function(s){return s.maps.some(function(m){return !m._closed;});});
   var match=function(s){return !q||lc(s.builder).indexOf(q)>=0||lc(s.site).indexOf(q)>=0;};
   var html='<div class="hd"><h1>Sites</h1>'+(isAdm()?'<button class="btn ghost mini" onclick="App.uploadMap()">Upload site map</button>':'')+'</div>'
-    +'<div style="margin-top:14px"><input type="search" placeholder="Search builders or sites" aria-label="Search sites" value="'+h(SV.q)+'" oninput="App.siteSearch(this.value)"></div>';
+    +'<div style="margin-top:14px"><input type="search" placeholder="Search builders or sites" aria-label="Search sites" value="'+h(SV.q)+'" oninput="App.siteSearch(this.value)"></div>'
+    +'<div style="margin-top:10px">'+searchBar()+'</div>';
   var act=active.filter(match);
   html+='<div class="blk"><h2>Active sites</h2><div class="card">'+(act.length?act.map(siteRow).join(''):'<p class="empty">'+(q?'No active sites match.':'No site maps yet.'+(isAdm()?' Upload one to start tracking lots.':''))+'</p>')+'</div></div>';
   var builders=buildersFrom(idx).filter(function(b){return !q||lc(b.name).indexOf(q)>=0||b.sites.some(match);});

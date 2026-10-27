@@ -139,6 +139,8 @@ input:focus,select:focus{border-color:var(--G);background:#fff}
   <div class="tt">Measure Tool</div>
   <div class="ta">
     <button class="btn bw bs" onclick="openDrawModal()" style="background:#1b5e38;color:#fff;border-color:#1b5e38">🤖 AI Plan Reader</button>
+    <button class="btn bw bs" onclick="document.getElementById('impPdfIn').click()" title="Load a measure sheet PDF this portal made">📄 Import PDF</button>
+    <input type="file" id="impPdfIn" accept="application/pdf,.pdf" style="display:none" onchange="if(this.files[0])importMeasurePDF(this.files[0]);this.value=''">
     <button class="btn bw bs" onclick="openDigitizeModal()" style="background:#7c3aed;color:#fff;border-color:#7c3aed">📷 Read Photo</button>
     <button class="btn bw bs" onclick="clearForm()">✕ Clear</button>
     <button class="btn bp" id="pdfBtn" onclick="savePDF()">💾 Save &amp; Download PDF</button>
@@ -1334,10 +1336,18 @@ async function savePDF(returnB64=false){
     iCell(M+W3,y+IR,W3,'MODEL:',gv('fmodel'),16);
     iCell(M+2*W3,y+IR,W3,'DATE MEASURED:',dateFmt,28);
     // Row 3: FURNACE | AC
-    [M+W3,M+2*W3].forEach(vx=>ln(vx,y+IR*2,vx,y+IR*3,0.35,BLK));
-    iCell(M,y+IR*2,W3,'FURNACE:',gv('ffurnace'),18);
-    iCell(M+W3,y+IR*2,W3,'AC:',gv('fac'),10);
-    iCell(M+2*W3,y+IR*2,W3,'TYPE:',mtypeLabel(),13);
+    // Furnace keeps half the row (model names are long); AC and Type share the rest
+    if(mtypeLabel()){
+      const QW=HW/2;
+      [M+HW,M+HW+QW].forEach(vx=>ln(vx,y+IR*2,vx,y+IR*3,0.35,BLK));
+      iCell(M,y+IR*2,HW,'FURNACE:',gv('ffurnace'),18);
+      iCell(M+HW,y+IR*2,QW,'AC:',gv('fac'),10);
+      iCell(M+HW+QW,y+IR*2,QW,'TYPE:',mtypeLabel(),13);
+    }else{
+      ln(M+HW,y+IR*2,M+HW,y+IR*3,0.35,BLK);
+      iCell(M,y+IR*2,HW,'FURNACE:',gv('ffurnace'),18);
+      iCell(M+HW,y+IR*2,HW,'AC:',gv('fac'),10);
+    }
     // Row 4: column headers
     ln(xDUC,y+IR*3,xDUC,y+IR*4,0.4,BLK);ln(xBLK,y+IR*3,xBLK,y+IR*4,0.4,BLK);ln(xRGT,y+IR*3,xRGT,y+IR*4,0.4,BLK);
     iCell(M,y+IR*3,FIT_W,'','',0);
@@ -1509,6 +1519,8 @@ async function savePDF(returnB64=false){
     y=gridBot;
     dc(...BLK);pdf.setLineWidth(0.5);pdf.line(M,y,M+CW,y);
 
+    try{pdf.setProperties({title:'Measure Sheet '+(gv('fmaster')||''),subject:'Eco Air measure sheet',creator:'Eco Air Staff Portal',
+      keywords:'ECOAIR-MEASURE:'+btoa(unescape(encodeURIComponent(JSON.stringify(collectJobData()))))});}catch(e){}
     const _nb=[gv('fname'),gv('fsite'),gv('fmodel'),gv('flot')?'Lot '+gv('flot'):''].filter(Boolean);
     const fn=(_nb.length?_nb.join(' — '):gv('fmaster')||'Job')+' — Measure Sheet.pdf';
     if(returnB64){const b64=pdf.output('datauristring');return{b64,filename:fn};}
@@ -1793,6 +1805,150 @@ window.digitizeRun=async function(){
   }finally{
     btn.disabled=false;btn.textContent='⚡ Digitize Master';_updateBtn();
   }
+};
+})();
+</script>
+
+
+<!-- ── Import PDF: rebuild the form from a measure sheet PDF this portal made ── -->
+<div id="impModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;padding:16px">
+  <div style="background:#fff;border-radius:14px;padding:20px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="font-size:16px;font-weight:700;color:#1b5e38;margin-bottom:10px" id="impTitle">PDF imported</div>
+    <div id="impBody" style="font-size:13px;color:#374151;line-height:1.5"></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="btn bp" onclick="document.getElementById('impModal').style.display='none'">Review the form</button></div>
+  </div>
+</div>
+<script>
+(function(){
+var _lib=null;
+function pdfLib(){
+  if(_lib)return Promise.resolve(_lib);
+  if(window.pdfjsLib){_lib=window.pdfjsLib;return Promise.resolve(_lib);}
+  return new Promise(function(ok,bad){
+    var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload=function(){window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';_lib=window.pdfjsLib;ok(_lib);};
+    s.onerror=function(){bad(new Error('Could not load the PDF reader. Check your internet connection.'));};
+    document.head.appendChild(s);
+  });
+}
+var MONTHS={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+function isoDate(t){var m=String(t||'').match(/([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})/);if(!m)return /^\d{4}-\d\d-\d\d$/.test(t)?t:'';var mo=MONTHS[m[1].toLowerCase()];return mo?m[3]+'-'+String(mo).padStart(2,'0')+'-'+String(m[2]).padStart(2,'0'):'';}
+function num(t){var m=String(t).match(/-?\d+(\.\d+)?/);return m?m[0]:'';}
+function wh(t){var p=String(t).replace(/["”″]/g,'').split(/\s*[x×X]\s*/);return [num(p[0]||''),num(p[1]||'')];}
+var EXTRA_OPTS=['Flex 5ft','Flex 10ft','RI Kit','Thimble','HV Box','R/A Frame','Other'];
+var SUBHDRS={duc:['DUCT (LF)','PIPE (LF)','FLEX','EXTRAS'],blk:['BLOCK ENDS','ELBOWS','CLEATS'],rgt:['JOIST LINING','BOOTS (<=5")','BOOTS (6"+)','DAMPERS','TTO','STO']};
+var FIT_NAMES=['Side 90','Stack 90','Side 45','Stack 45','Rise PTO','Flat PTO','Y-Branch','Semi-Y','Zoning Y','Taper (Centre)','Taper (Flat)','Riser','RA Boot','Custom'];
+// Group items into lines by baseline
+function lines(items,tol){
+  var out=[];items.slice().sort(function(a,b){return a.y-b.y||a.x-b.x;}).forEach(function(it){
+    var L=out.length?out[out.length-1]:null;if(L&&Math.abs(L.y-it.y)<=(tol||1.2))L.items.push(it);else out.push({y:it.y,items:[it]});
+  });
+  out.forEach(function(L){L.items.sort(function(a,b){return a.x-b.x;});L.text=L.items.map(function(i){return i.s;}).join(' ');});
+  return out;
+}
+
+async function parseMeasurePDF(file){
+  var lib=await pdfLib();
+  var doc=await lib.getDocument({data:await file.arrayBuffer()}).promise;
+  // 1) PDFs made after this update carry the exact form inside them
+  try{var md=await doc.getMetadata();var kw=(md&&md.info&&md.info.Keywords)||'';var em=kw.match(/ECOAIR-MEASURE:([A-Za-z0-9+\/=]+)/);
+    if(em){var data=JSON.parse(decodeURIComponent(escape(atob(em[1]))));if(data&&data.items)return {data:data,exact:true,notes:[]};}}catch(e){}
+  // 2) Older PDFs: read the printed layout (positions in mm, top-left origin)
+  var page=await doc.getPage(1),vp=page.getViewport({scale:1}),tc=await page.getTextContent(),k=25.4/72,PH=vp.height;
+  var items=tc.items.filter(function(i){return i.str&&i.str.replace(/\u0000/g,'').trim();}).map(function(i){return {s:i.str.replace(/\u0000/g,'').replace(/\s+/g,' ').trim(),x:i.transform[4]*k,y:(PH-i.transform[5])*k,w:i.width*k,fs:Math.abs(i.transform[3])||Math.abs(i.transform[0])};});
+  if(!items.some(function(i){return i.s==='MASTER #:';}))throw new Error('This doesn\'t look like a measure sheet from the portal. For a handwritten sheet, use Read Photo.');
+  var notes=[],fields={};FIELDS.forEach(function(id){fields[id]='';});
+  // header
+  var LABELS={'MASTER #:':'fmaster','BUILDER:':'fname','SITE:':'fsite','LOT #:':'flot','MODEL:':'fmodel','DATE MEASURED:':'fdate','FURNACE:':'ffurnace','AC:':'fac','TYPE:':'_type'};
+  var labelItems=items.filter(function(i){return LABELS[i.s];});
+  labelItems.forEach(function(L){
+    var next=labelItems.filter(function(o){return o!==L&&Math.abs(o.y-L.y)<1&&o.x>L.x;}).sort(function(a,b){return a.x-b.x;})[0];
+    var v=items.filter(function(i){return i!==L&&!LABELS[i.s]&&Math.abs(i.y-L.y)<1&&i.x>L.x&&(!next||i.x<next.x);}).sort(function(a,b){return a.x-b.x;}).map(function(i){return i.s;}).join(' ').trim();
+    if(v==='—')v='';
+    fields[LABELS[L.s]]=v;
+  });
+  if(fields.fdate)fields.fdate=isoDate(fields.fdate);
+  if(fields._type){var tl=fields._type.toLowerCase();if(tl==='basement')fields.fmtype='basement';else if(tl==='rough-in')fields.fmtype='rough';else{fields.fmtype='custom';fields.fmtypec=fields._type;}}
+  delete fields._type;
+  // grid starts under the DUCT / BLOCK ENDS / JOIST LINING title row
+  var title=items.filter(function(i){return i.s==='DUCT'&&i.x>70&&i.x<130;})[0];
+  var gridTop=title?title.y+2:0;
+  var grid=items.filter(function(i){return i.y>gridTop;});
+  var colOf=function(i){var xc=i.x+i.w/2;return xc<76?'fit':xc<128?'duc':xc<180?'blk':'rgt';};
+  var out=[];
+  ['duc','blk','rgt'].forEach(function(col){
+    var sec='';
+    lines(grid.filter(function(i){return colOf(i)===col;})).forEach(function(L){
+      if(L.items.length===1&&SUBHDRS[col].indexOf(L.text)>=0){sec=L.text;return;}
+      if(L.items.length<2||!sec)return;
+      var lbl=L.items.slice(0,-1).map(function(i){return i.s;}).join(' '),val=L.items[L.items.length-1].s,q=num(val)||'1',d=num(lbl);
+      switch(sec){
+        case 'DUCT (LF)':{var a=wh(lbl);out.push({container:'duct-list',type:'duct',qty:'1',v1:a[0],v2:a[1],v3:q});break;}
+        case 'PIPE (LF)':out.push({container:'pipe-list',type:'pipe',qty:'1',v1:d,v3:q});break;
+        case 'FLEX':{var fm=lbl.match(/^(\d+)"?\s*Flex$/i);if(fm)out.push({container:'extra-list',type:'extra',qty:q,v1:'Insulated Flex',v2:fm[1],v3:'1'});else out.push({container:'extra-list',type:'extra',qty:q,v1:lbl});break;}
+        case 'EXTRAS':{var rm=lbl.match(/^Reducer\s*(\d+)\D+?(\d+)/i);
+          if(rm)out.push({container:'extra-list',type:'extra',qty:q,v1:'Reducer',v2:rm[1],v3:rm[2]});
+          else if(EXTRA_OPTS.indexOf(lbl)>=0)out.push({container:'extra-list',type:'extra',qty:q,v1:lbl});
+          else out.push({container:'extra-list',type:'extra',qty:q,v1:'Custom',v2:lbl});break;}
+        case 'BLOCK ENDS':{var b=wh(lbl);out.push({container:'duct-list',type:'blockend',qty:q,v1:b[0],v2:b[1]});break;}
+        case 'ELBOWS':out.push({container:'elbow-list',type:'elbow',qty:q,v1:d});break;
+        case 'CLEATS':out.push({container:'extra-list',type:'extra',qty:q,v1:/^D/i.test(lbl)?'D-Cleat':'S-Cleat'});break;
+        case 'JOIST LINING':out.push({container:'extra-list',type:'extra',qty:q,v1:'Joist Lining',v2:d+'"',v3:'48"'});
+          if(notes.indexOf('jl')<0){notes.push('jl');}break;
+        case 'BOOTS (<=5")':case 'BOOTS (6"+)':{var bt=(lbl.match(/\b(AB|EB|UB)\b/)||[])[1]||'AB';out.push({container:'boot-list',type:'boot',qty:q,v1:d,v2:bt});break;}
+        case 'DAMPERS':out.push({container:'extra-list',type:'extra',qty:q,v1:'Damper',v2:d+'"'});break;
+        case 'TTO':case 'STO':out.push({container:'takeoff-list',type:'takeoff',qty:q,v1:d,v2:sec});break;
+      }
+    });
+  });
+  // fittings: each slot has a ×qty badge at its top right, then the name and size lines below
+  var fit=grid.filter(function(i){return colOf(i)==='fit'&&!/^[ABC]$/.test(i.s)&&i.s!=='No fittings entered';});
+  var qtys=fit.filter(function(i){return /^[×x]\s*\d+$/.test(i.s);});
+  if(qtys.length){
+    var rights=[];qtys.forEach(function(q){var r=q.x+q.w;if(!rights.some(function(v){return Math.abs(v-r)<3;}))rights.push(r);});
+    var nCols=Math.min(3,Math.max(1,rights.length)),cw=68/nCols,colIdx=function(i){return Math.max(0,Math.min(nCols-1,Math.floor((i.x+i.w/2-8)/cw)));};
+    var slots=qtys.map(function(q){return {col:colIdx(q),top:q.y-(q.fs>12?8:5)-0.5,qty:num(q.s),items:[]};});
+    fit.filter(function(i){return qtys.indexOf(i)<0;}).forEach(function(i){
+      var c=colIdx(i),best=null;slots.forEach(function(sl){if(sl.col===c&&sl.top<=i.y&&(!best||sl.top>best.top))best=sl;});
+      if(best)best.items.push(i);
+    });
+    slots.sort(function(a,b){return a.col-b.col||a.top-b.top;}).forEach(function(sl){
+      var ls=lines(sl.items),ni=-1;
+      ls.forEach(function(L,ix){if(ni<0&&FIT_NAMES.indexOf(L.text)>=0)ni=ix;});
+      if(ni<0){notes.push('A fitting couldn\'t be read ('+ls.map(function(L){return L.text;}).join(' / ')+'). Add it by hand.');return;}
+      var t=ls[ni].text,f={container:'fitting-list',type:'fitting',qty:sl.qty||'1',vType:t,v1:'',v2:'',v3:'',v4:'',v5:''};
+      ls.slice(ni+1).forEach(function(L){
+        var m=L.text.match(/^([ABC]):\s*(.+)$/),val=(m?m[2]:L.text).replace(/["”″]/g,'').replace(/×/g,'x').trim();
+        if(/^(Y-Branch|Semi-Y|Zoning Y)$/.test(t)){if(m)f[{A:'v1',B:'v2',C:'v3'}[m[1]]]=val;}
+        else if(/^(Side|Stack) 90$|^Taper/.test(t)){if(m){var p=wh(val);if(m[1]==='A'){f.v1=p[0];f.v2=p[1];}else if(m[1]==='B'){f.v4=p[0];f.v5=p[1];}}}
+        else if(/PTO$/.test(t)&&/Side$/.test(L.text)){f.v3=/^Wide/.test(L.text)?'Wide':'Narrow';}
+        else if(t==='Custom'){if(!f.v1)f.v1=L.text;}
+        else{var p2=wh(val);f.v1=p2[0];f.v2=p2[1];}
+      });
+      out.push(f);
+    });
+  }
+  var nl=[];
+  if(notes.indexOf('jl')>=0)nl.push('Joist lining length isn\'t printed on the sheet, so it was set to 48". Change it if it was 60".');
+  notes.forEach(function(n){if(n!=='jl')nl.push(n);});
+  if(out.some(function(i){return i.v1==='Insulated Flex';}))nl.push('Insulated flex: the sheet shows the count, not the box size, so each line is set to 1 box.');
+  return {data:{fields:fields,items:out},exact:false,notes:nl};
+}
+
+window.importMeasurePDF=async function(file){
+  var has=document.querySelectorAll('.item-row').length>0||FIELDS.some(function(id){var el=document.getElementById(id);return el&&el.value&&id!=='fdate';});
+  if(has&&!confirm('Importing replaces what is on the form now. Continue?'))return;
+  var r;
+  try{r=await parseMeasurePDF(file);}catch(e){alert(e.message||String(e));return;}
+  doLoad(r.data);
+  var counts={};r.data.items.forEach(function(i){counts[i.type]=(counts[i.type]||0)+1;});
+  var n=r.data.items.length;
+  document.getElementById('impTitle').textContent=r.exact?'PDF imported exactly':'PDF imported';
+  document.getElementById('impBody').innerHTML=
+    '<p style="margin:0 0 8px">'+(r.exact?'This PDF carried the full form, so every line is restored exactly as it was saved.':'Read <b>'+n+'</b> lines from the printed sheet'+(r.data.fields.fmaster?' for <b>'+String(r.data.fields.fmaster).replace(/</g,'&lt;')+'</b>':'')+'. Lines that were combined on the sheet (like duct lengths) come back as one line per size.')+'</p>'
+    +(r.notes.length?'<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:8px 12px;margin:8px 0"><b>Check</b><ul style="margin:4px 0 0;padding-left:18px">'+r.notes.map(function(x){return '<li>'+x+'</li>';}).join('')+'</ul></div>':'')
+    +'<p style="margin:8px 0 0">Compare the preview with your PDF, then Save &amp; Download PDF to put it in the portal.</p>';
+  document.getElementById('impModal').style.display='flex';
 };
 })();
 </script>

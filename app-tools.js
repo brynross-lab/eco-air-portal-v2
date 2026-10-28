@@ -230,6 +230,8 @@ async function saveMeasureNow(mk,flds,fd){
   var doc=_buildMeasureDoc(mk,flds,fd);doc._docType='measure';doc._savedBy=meName()||'staff';
   doc._key=slot.label;doc.label=slot.label;doc.num=mk;doc.masterNum=mk;
   doc.masterType=slot.type;doc.masterTypeLabel=slot.typeLabel;
+  // Keep the AI Plan Reader's original read with the master; the difference teaches the next read
+  try{var tw=toolFrame()&&toolFrame().contentWindow;if(tw&&tw.__aiRead){doc._ai=JSON.parse(JSON.stringify(tw.__aiRead));doc._ai.correctedBy=meName()||'';}}catch(x){}
   try{
     await DB.collection('saved_masters').doc(id).set(doc,{merge:true});
     showToast((slot.typeLabel||'Master')+' saved: '+slot.label);
@@ -417,3 +419,74 @@ window.addEventListener('resize',function(){if(document.getElementById('invBuild
 /* names the carried-over invoice engine calls */
 function showPane(name){if(name==='invoice'&&!document.getElementById('pane-invoice'))App.openInvoice();}
 function renderPendingWOs(){changed();}
+
+
+/* ───────────────────────── AI Plan Reader: learning from corrections ─────────────────────────
+   When the Plan Reader fills a master, its exact output is saved with the master (_ai). Comparing
+   that with the master as it was finally saved shows what the AI got wrong. The newest corrections
+   (same builder first) and the admin's standing rules (meta/plan_reader) go into the next read. */
+function aiItemKey(it){
+  var t=it.type,v=function(k){return String(it[k]==null?'':it[k]).replace(/"/g,'').trim();};
+  var q=parseFloat(it.qty)||1,len=parseFloat(it.v3)||0;
+  switch(t){
+    case 'duct':return ['Duct '+v('v1')+'x'+v('v2')+' (ft)',len*q];
+    case 'blockend':return ['Block end '+v('v1')+'x'+v('v2'),q];
+    case 'pipe':return ['Pipe '+v('v1')+'" (ft)',len*q];
+    case 'pipeblockend':return ['Pipe block end '+v('v1')+'"',q];
+    case 'elbow':return ['Elbow '+v('v1')+'"',q];
+    case 'boot':return ['Boot '+v('v1')+'" '+(v('v2')||'AB'),q];
+    case 'takeoff':return [(v('v2')||'TTO')+' '+v('v1')+'"',q];
+    case 'fitting':{var vt=it.vType||'Fitting',sz;
+      if(/Y/.test(vt))sz=[v('v1'),v('v2'),v('v3')].filter(Boolean).join(' / ');
+      else if(/90|Taper/.test(vt))sz=v('v1')+'x'+v('v2')+(v('v4')?' to '+v('v4')+'x'+v('v5'):'');
+      else if(/PTO/.test(vt))sz=v('v1')+'x'+v('v2')+(v('v3')?' '+v('v3')+' side':'');
+      else sz=[v('v1')&&v('v2')?v('v1')+'x'+v('v2'):v('v1'),v('v3')].filter(Boolean).join(' ');
+      return [vt+(sz?' '+sz:''),q];}
+    case 'extra':{var e1=v('v1');
+      if(e1==='Insulated Flex')return ['Insulated flex '+v('v2')+'" (boxes)',q*(parseFloat(it.v3)||1)];
+      if(e1==='Reducer')return ['Reducer '+v('v2')+'" to '+v('v3')+'"',q];
+      if(e1==='Joist Lining')return ['Joist lining '+v('v2')+'" x '+(v('v3')||'48')+'"',q];
+      if(e1==='Damper')return ['Damper '+v('v2')+'"',q];
+      if(e1==='Custom')return ['Custom: '+v('v2'),q];
+      return [e1,q];}
+  }
+  return [t,q];
+}
+function aiTotals(items){var m={};(items||[]).forEach(function(it){var k=aiItemKey(it);if(!k[0])return;m[k[0]]=Math.round(((m[k[0]]||0)+k[1])*10)/10;});return m;}
+function masterFinalItems(m){var fd=m.snapshot&&m.snapshot._formData;return (fd&&fd.items)||m.items||[];}
+/* Compare one master's AI read with its saved version. */
+function aiCorrections(m){
+  var a=aiTotals(m._ai&&m._ai.items),f=aiTotals(masterFinalItems(m)),keys={},out={wrong:[],missed:[],extra:[],right:0,total:0};
+  Object.keys(a).concat(Object.keys(f)).forEach(function(k){keys[k]=1;});
+  Object.keys(keys).sort().forEach(function(k){
+    out.total++;var x=a[k]||0,y=f[k]||0;
+    if(x===y)out.right++;
+    else if(!x)out.missed.push([k,y]);
+    else if(!y)out.extra.push([k,x]);
+    else out.wrong.push([k,x,y]);
+  });
+  out.score=out.total?Math.round(out.right/out.total*100):100;
+  return out;
+}
+function aiMastersWithReads(){return D.masters.filter(function(m){return m._ai&&m._ai.items&&!m._deleted;}).sort(function(a,b){return String(b._savedAt||'').localeCompare(String(a._savedAt||''));});}
+var PLAN_RULES=null;
+async function loadPlanRules(){try{var d=await DB.collection('meta').doc('plan_reader').get();PLAN_RULES=d.exists?d.data():{};}catch(e){PLAN_RULES=PLAN_RULES||{};}return PLAN_RULES;}
+window.eaPlanLessons=async function(builder){
+  var rules=await loadPlanRules(),b=lc(builder),parts=[],count=0,size=0,LIMIT=9000;
+  var list=aiMastersWithReads();
+  list=list.filter(function(m){return lc(getB(m))===b;}).concat(list.filter(function(m){return lc(getB(m))!==b;}));
+  list.slice(0,10).forEach(function(m){
+    var c=aiCorrections(m);if(size>LIMIT)return;
+    var lines=[];
+    c.wrong.forEach(function(w){lines.push(w[0]+': you said '+w[1]+', correct is '+w[2]);});
+    c.missed.forEach(function(w){lines.push('MISSED '+w[0]+' x'+w[1]);});
+    c.extra.forEach(function(w){lines.push('NOT NEEDED (removed) '+w[0]+' x'+w[1]);});
+    var head='\n- Master '+(m.masterNum||m.num||masterKey(m))+' (model '+(masterModel(m)||'?')+', builder '+(getB(m)||'?')+'): '+c.score+'% of lines right';
+    var txt=lines.length?head+'. Corrections: '+lines.join('; ')+'.':head+'. The estimator kept your read as is.';
+    size+=txt.length;parts.push(txt);count++;
+  });
+  var text='';
+  if(rules&&String(rules.notes||'').trim())text+='\n\nESTIMATOR\'S STANDING RULES FOR READING DRAWINGS (always follow these):\n'+String(rules.notes).trim()+'\n';
+  if(parts.length)text+='\n\nYOUR PAST READS AND HOW THE ESTIMATOR CORRECTED THEM (newest first; same builder first). Learn the pattern behind each correction and do not repeat these mistakes:'+parts.join('')+'\n';
+  return {text:text,count:count};
+};

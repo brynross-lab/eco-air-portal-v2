@@ -1088,6 +1088,7 @@ function collectJobData(){
 }
 
 function doLoad(data){
+  window.__aiRead=null; // loading a saved or imported sheet: no AI read to learn from
   Object.entries(data.fields).forEach(([id,v])=>{const el=document.getElementById(id);if(el)el.value=v;});
   if(!data.fields.fmtype){var _t=document.getElementById('fmtype');if(_t)_t.value='';var _c=document.getElementById('fmtypec');if(_c)_c.value='';}
   mtypeSync();
@@ -1138,6 +1139,7 @@ function loadJob(){
 
 function clearForm(){
   if(!confirm('Clear everything and start a new job?'))return;
+  window.__aiRead=null;
   FIELDS.forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   Object.keys(SEC_META).forEach(id=>document.getElementById(id).innerHTML='');
   render();
@@ -2022,6 +2024,7 @@ function renderThumbs(){
   document.getElementById('drawPages').style.display=_pages.length?'block':'none';
 }
 window.drawLoadFile=async function(file){
+  window.__drawFileName=file&&file.name||'';
   _pages=[];btnOn(false);document.getElementById('drawFlags').style.display='none';
   try{
     if(file.type==='application/pdf'){
@@ -2090,10 +2093,13 @@ window.drawRun=async function(){
   try{
     st('Loading your saved Masters to learn from…');
     var learned=await savedMasterExamples();
+    // Corrections Eco Air made to past AI reads, plus standing rules, from the portal
+    var lessons='',nLessons=0;
+    try{if(window.parent&&window.parent.eaPlanLessons){var L=await window.parent.eaPlanLessons(document.getElementById('fname').value);lessons=L.text||'';nLessons=L.count||0;}}catch(e){console.warn('[ReadDrawing] lessons not loaded',e);}
     var edge=1400,imgs;
     do{ imgs=sel.map(function(p){return canvasJpeg(fitCanvas(p.canvas,edge)).split(',')[1];});
         edge-=200; } while(imgs.join('').length>3400000&&edge>=800);
-    var prompt=DRAW_GUIDE+DRAW_EXAMPLE+(learned?'\n\nMORE MASTERS ECO AIR HAS SAVED (item lists only, no drawings). Use them to match Eco Air\'s naming, boot types, extras and proportions:'+learned+'\n':'')+DRAW_OUT;
+    var prompt=DRAW_GUIDE+DRAW_EXAMPLE+(learned?'\n\nMORE MASTERS ECO AIR HAS SAVED (item lists only, no drawings). Use them to match Eco Air\'s naming, boot types, extras and proportions:'+learned+'\n':'')+lessons+DRAW_OUT;
     var content=imgs.map(function(b){return {type:'image',source:{type:'base64',media_type:'image/jpeg',data:b}};});
     content.push({type:'text',text:prompt});
     st('Claude is reading '+sel.length+' sheet'+(sel.length>1?'s':'')+'. This takes 1 to 3 minutes…');
@@ -2121,7 +2127,9 @@ window.drawRun=async function(){
       (sh.length?'<div style="margin-bottom:6px;color:#374151">'+sh.map(esc).join('<br>')+'</div>':'')+
       '<ul style="margin:0;padding-left:18px">'+flags.map(function(x){return '<li>'+esc(x)+'</li>';}).join('')+'</ul>';
     fl.style.display='block';
-    st('✓ AI filled '+n+' items'+(learned?' using your saved Masters':'')+'. Review the form, then Save.','#16a34a');
+    // Remember exactly what the AI produced, so the corrections made before saving can teach the next read
+    window.__aiRead={readAt:new Date().toISOString(),model:DRAW_MODEL,file:window.__drawFileName||'',sheets:sh,flags:flags,items:JSON.parse(JSON.stringify(collectJobData().items))};
+    st('✓ AI filled '+n+' items'+(learned?' using your saved Masters':'')+(nLessons?' and '+nLessons+' past correction'+(nLessons>1?'s':''):'')+'. Review the form, fix anything wrong, then Save. Your fixes teach the next read.','#16a34a');
   }catch(e){st('Error: '+e.message,'#dc2626');console.error('[ReadDrawing]',e);}
   finally{btnOn(true);}
 };

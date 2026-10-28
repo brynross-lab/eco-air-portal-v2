@@ -245,6 +245,7 @@ SCREENS.more = function(){
     +(isAdm()?row('Approvals','App.approvals()','Work order edits and share requests',approvalCount()||''):'')
     +(isAdm()?row('Staff accounts','App.staff()',pl(D.staff.length,'person','people')):'')
     +(isAdm()?row('Activity','App.activity()','Recent actions by everyone'):'')
+    +(isAdm()?row('AI Plan Reader','App.planReader()','What it has learned, and your rules for it'):'')
     +(isAdm()?row('Download a backup','App.backup()','Everything in the shared database, as one file'):'')
     +'</div></div>';
   if(isAdm()&&EA.LEGACY_PORTAL_URL){
@@ -689,3 +690,39 @@ var _srchT=null;
 App.searchQ=function(v){var e=curSheet();if(!e||e.type!=='search')return;e.q=v;e.limit=SRCH_LIMIT;clearTimeout(_srchT);_srchT=setTimeout(searchRefresh,120);};
 App.searchKind=function(k){var e=curSheet();e.kind=k;e.limit=SRCH_LIMIT;rerender();var i=document.getElementById('srchQ');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}};
 App.searchMore=function(){var e=curSheet();e.limit+=SRCH_LIMIT;searchRefresh();};
+
+/* ───────────────────────── AI Plan Reader: lessons screen (admins) ───────────────────────── */
+App.planReader=function(){push({type:'planReader',live:true,d:{notes:null}});loadPlanRules().then(function(r){var e=STACK.find(function(x){return x.type==='planReader';});if(e&&e.d.notes===null){e.d.notes=r.notes||'';renderSheet(STACK.indexOf(e));}});};
+SHEETS.planReader=function(e){
+  var list=aiMastersWithReads(),rows=list.slice(0,30).map(function(m){
+    var c=aiCorrections(m),fixes=c.wrong.length+c.missed.length+c.extra.length;
+    return '<div class="lrow"><button class="lmain" onclick="App.planReaderDetail(R('+reg(m)+'))"><span class="top"><b>'+h(m.label||masterKey(m))+'</b><span class="pill '+(c.score>=90?'ok':c.score>=70?'warn':'bad')+'">'+c.score+'% right</span></span>'
+      +'<span class="s">'+h([getB(m),fixes?pl(fixes,'correction'):'No corrections',m._savedAt?'Saved '+fmtDate(m._savedAt):''].filter(Boolean).join(' · '))+'</span></button><span class="chev">›</span></div>';
+  }).join('');
+  var avg=list.length?Math.round(list.slice(0,10).reduce(function(a,m){return a+aiCorrections(m).score;},0)/Math.min(10,list.length)):null;
+  return {title:'AI Plan Reader',sub:'Learns from your corrections',body:
+    '<div class="sec"><p class="s" style="margin-top:0">Each time the Plan Reader fills a master, it keeps what it read. When you fix lines and save, the next read is shown your corrections (same builder first) so it stops repeating them.</p>'
+    +(avg!=null?'<div class="stat"><div>'+(list.length===1?'Last read':'Last '+Math.min(10,list.length)+' reads')+'<span>Lines the AI had right before you saved</span></div><b class="pill '+(avg>=90?'ok':avg>=70?'warn':'bad')+'">'+avg+'%</b></div>':'')+'</div>'
+    +'<div class="sec"><h3>Your rules</h3><p class="s">Plain sentences the AI follows on every read, e.g. <i>"Caivan basements always get 20 S-cleats and 20 D-cleats"</i> or <i>"Round branch runs up to the next 10 ft"</i>.</p>'
+    +(e.d.notes===null?'<p class="s">Loading…</p>':'<textarea rows="7" style="width:100%" oninput="App.setD(\'notes\',this.value)" placeholder="One rule per line">'+h(e.d.notes)+'</textarea><button class="btn" style="margin-top:8px" onclick="App.savePlanRules()">Save rules</button>')+'</div>'
+    +'<div class="sec"><h3>Reads it learns from</h3>'+(rows?'<div class="card">'+rows+'</div>':'<p class="empty">No AI reads saved yet. Use AI Plan Reader on a Measure sheet, fix anything wrong, and save.</p>')+'</div>'};
+};
+App.savePlanRules=async function(){
+  var e=curSheet();
+  if(await save(function(){return DB.collection('meta').doc('plan_reader').set({notes:String(e.d.notes||'').trim(),updatedAt:new Date().toISOString(),updatedBy:meUser()},{merge:true});},'Rules saved. The next read will use them.'))PLAN_RULES={notes:e.d.notes};
+};
+App.planReaderDetail=function(m){push({type:'planReaderDetail',m:m});};
+SHEETS.planReaderDetail=function(e){
+  var m=e.m,c=aiCorrections(m),row=function(a,b){return '<div class="lrow"><div class="lmain"><span class="top"><b>'+a+'</b></span><span class="s">'+b+'</span></div></div>';};
+  var body='<div class="sec"><div class="stat"><div>'+h(m.label||masterKey(m))+'<span>'+h([getB(m),m._ai.file,m._ai.readAt?'Read '+fmtDate(m._ai.readAt):''].filter(Boolean).join(' · '))+'</span></div><b class="pill '+(c.score>=90?'ok':c.score>=70?'warn':'bad')+'">'+c.score+'%</b></div></div>';
+  if(c.wrong.length)body+='<div class="sec"><h3>Wrong amount</h3><div class="card">'+c.wrong.map(function(w){return row(h(w[0]),'AI said '+w[1]+' · you saved '+w[2]);}).join('')+'</div></div>';
+  if(c.missed.length)body+='<div class="sec"><h3>Missed</h3><div class="card">'+c.missed.map(function(w){return row(h(w[0]),'You added '+w[1]);}).join('')+'</div></div>';
+  if(c.extra.length)body+='<div class="sec"><h3>Not needed</h3><div class="card">'+c.extra.map(function(w){return row(h(w[0]),'AI added '+w[1]+' · you removed it');}).join('')+'</div></div>';
+  if(!c.wrong.length&&!c.missed.length&&!c.extra.length)body+='<div class="sec"><p class="empty">Saved exactly as the AI read it.</p></div>';
+  if(isAdm())body+='<div class="sec"><button class="btn ghost wide" onclick="App.forgetAiRead(R('+reg(m)+'))">Don\'t learn from this read</button><p class="s">Use this if the master was changed for reasons that had nothing to do with the drawing.</p></div>';
+  return {title:'What the AI got wrong',body:body};
+};
+App.forgetAiRead=async function(m){
+  var ok=await ask('Stop learning from this read?','The master stays as it is. Only the AI\'s original read is removed.',[{label:'Cancel',value:false,style:'ghost'},{label:'Remove read',value:true,style:'danger'}]);if(!ok)return;
+  if(await save(function(){return DB.collection('saved_masters').doc(docId(m)).update({_ai:firebase.firestore.FieldValue.delete()});},'Removed from learning')){delete m._ai;popSheet();changed();}
+};

@@ -148,6 +148,29 @@ details summary{cursor:pointer;font-weight:600}
 
 .flagline{font-size:13px;padding:4px 0}
 
+
+/* estimate tab: clean estimate left, to-dos right */
+.estgrid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:900px){.estgrid{grid-template-columns:minmax(0,1fr)}}
+.cdoc{border:1px solid var(--line);border-radius:10px;padding:18px;background:#fff;display:grid;gap:12px}
+.cdoc-hd{display:flex;justify-content:space-between;gap:12px;border-bottom:2px solid #143f27;padding-bottom:10px}
+.cdoc-hd b{font-family:var(--font-display);font-size:22px;color:#143f27;letter-spacing:.04em;display:block}
+.cdoc-hd span{font-size:12.5px;color:var(--muted)}
+.cdoc-hd .r{text-align:right}.cdoc-t{font-family:var(--font-display);font-size:26px;font-weight:800;color:#143f27;letter-spacing:.06em}
+.cdoc-to{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cdoc-to div{background:var(--surface2);border-radius:8px;padding:8px 10px}
+.cdoc-to span,.cdoc-h{font-size:12px;font-weight:700;color:#1b5e38;letter-spacing:.06em;text-transform:uppercase;display:block}
+.cdoc-sec{border-bottom:1px solid var(--line);padding-bottom:8px}
+.cdoc-row{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
+.cdoc-sec ul{margin:4px 0 0;padding-left:18px;color:var(--muted);font-size:14px}
+.cdoc-tot{margin-left:auto;min-width:260px;border-collapse:collapse}
+.cdoc-tot td{border:0;padding:3px 0}.cdoc-tot td.num{text-align:right}
+.cdoc-tot tr.g td{border-top:2px solid #143f27;font-family:var(--font-display);font-size:20px;font-weight:700;padding-top:6px}
+.cdoc-pay{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;font-size:14px}
+.cdoc-pay div{background:var(--surface2);border-radius:8px;padding:6px 8px;display:flex;gap:6px;flex-wrap:wrap}.cdoc-pay span{margin-left:auto}
+.cdoc.big{max-width:820px;margin:0 auto;padding:28px}
+.ovl{position:fixed;inset:0;background:rgba(23,34,29,.45);z-index:30;overflow:auto;padding:24px max(16px,env(safe-area-inset-left,0px))}
+.ovl-card{background:var(--bg);border-radius:12px;max-width:900px;margin:0 auto;padding:16px;display:grid;gap:12px;box-shadow:0 12px 40px rgba(0,0,0,.25)}
 /* lead fields in the header, to-do list */
 .kv.lead{grid-template-columns:2fr 1fr 2fr 1fr 1.3fr 1fr}
 .kv.lead input,.kv.lead select{width:100%!important}
@@ -289,30 +312,39 @@ function itemStatus(it){if(!it||it.cost==null)return 'missing';return it.confirm
 function itemLine(key,grp,cat,it,desc){return mkLine({key,grp,cat,desc:desc||it.desc,qty:1,unit:'ea',unitCost:it.cost??null,itemId:it.id,status:itemStatus(it),src:(it.source||'Price book')+(it.date?` · ${it.date}`:'')})}
 const blowerTons=sku=>{const m=String(sku).match(/[BCD](12|16|20)/);return m?{12:3,16:4,20:5}[m[1]]:null};
 function furnaceDesc(it){const a=it.attrs||{};return `${it.sku} — ${a.btu?Math.round(a.btu/1000)+',000 BTU ':''}${it.desc||''}`.trim()}
-function pickFurnace(f,tons,zoned){const furn=S.items.filter(i=>i.kind==='furnace');
-  if(f.model){const m=furn.find(i=>norm(i.sku)===norm(f.model));if(m&&m.cost!=null)return{item:m,sub:false}}
-  const btu=+f.btuInput||0;if(!btu)return{item:null};
-  let c=furn.filter(i=>i.cost!=null&&+i.attrs?.btu===btu);
+const FURN_SIZES=[40000,45000,60000,66000,70000,80000,90000,100000,110000,120000,135000];
+// input BTU from the plan: stated input, else the size code in the model number (Lennox EL297UH070…, Carrier …080…, Armstrong …070…), else from the output rating
+function furnaceBTU(f){if(+f.btuInput)return +f.btuInput;const m=String(f.model||'').toUpperCase().match(/(?:^|[A-Z])(040|045|060|066|070|080|090|100|110|120|135)(?=[A-Z]|$)/);if(m)return +m[1]*1000;
+  if(+f.btuOutput){const want=+f.btuOutput/0.96;return FURN_SIZES.find(x=>x>=want-1500)||null}return null}
+// blower size from the plan model (…XV36 = 3 ton, …C16 = 4 ton) when the AC size isn't given
+function planBlowerTons(model){const m=String(model||'').toUpperCase().match(/(?:XV|XP|V|B|C|D)(24|30|36|42|48|60)(?=[A-Z]|$)/);if(m)return +m[1]/12;const k=String(model||'').toUpperCase().match(/[BCD](12|16|20)/);return k?{12:3,16:4,20:5}[k[1]]:null}
+function pickFurnace(f,tons,zoned){const furn=S.items.filter(i=>i.kind==='furnace'&&i.cost!=null);
+  if(f.model){const m=furn.find(i=>norm(f.model).includes(norm(i.sku)));if(m)return{item:m,sub:false,btu:+m.attrs?.btu||null}}
+  const btu=furnaceBTU(f);if(!btu)return{item:null,btu:null};
+  const sizes=[...new Set(furn.filter(i=>/^A9/.test(i.sku)||/armstrong/i.test(i.desc||'')).map(i=>+i.attrs?.btu).filter(Boolean))].sort((a,b)=>a-b);
+  const size=sizes.find(x=>x>=btu)||sizes[sizes.length-1];if(!size)return{item:null,btu};
+  let c=furn.filter(i=>+i.attrs?.btu===size&&(/^A9/.test(i.sku)||/armstrong/i.test(i.desc||'')));
   const pref=zoned?['2-stage variable speed','modulating','2-stage ECM']:['2-stage variable speed','2-stage ECM','modulating'];
   for(const s of pref){const cc=c.filter(i=>i.attrs?.series===s);if(cc.length){c=cc;break}}
-  if(!c.length)return{item:null};
-  c.sort((a,b)=>(blowerTons(a.sku)||0)-(blowerTons(b.sku)||0));
-  const fit=c.find(i=>(blowerTons(i.sku)||9)>=(tons||0))||c[c.length-1];
-  return{item:fit,sub:!!f.model&&norm(fit.sku)!==norm(f.model)}}
+  if(!c.length)return{item:null,btu};
+  const need=tons||planBlowerTons(f.model)||0;c.sort((a,b)=>(blowerTons(a.sku)||0)-(blowerTons(b.sku)||0));
+  const fit=c.find(i=>(blowerTons(i.sku)||9)>=need)||c[c.length-1];
+  return{item:fit,sub:!!f.model,btu,size}}
+function ventType(v){const t=String(v.type||'').toUpperCase();if(t==='ERV'||t==='HRV')return t;const m=String(v.model||'').toUpperCase();if(/ERV|E\d{2}|\dE/.test(m))return 'ERV';if(/HRV|H\d{2}|\dH/.test(m))return 'HRV';return 'HRV'}
 function generateLines(job){const t=job.takeoff||{},st=job.settings||{},L=[];const retro=st.jobType==='retrofit';
   const runs=supplyTotal(t),rets=returnTotal(t),tons=+t.ac?.tons||0,zones=+t.zones||1,share=(rv('rough_share')??50)/100;
   const f=t.furnace||{};
-  if(!f.existing&&(f.btuInput||f.model)){const p=pickFurnace(f,tons,zones>1);
-    if(p.item)L.push(itemLine('furnace','furnace','equipment',p.item,furnaceDesc(p.item)+(p.sub?` (equivalent to spec'd ${f.model})`:'')));
-    else L.push(mkLine({key:'furnace',grp:'furnace',cat:'equipment',desc:`Furnace ${f.model||''} ${f.btuInput?Math.round(f.btuInput/1000)+',000 BTU':''}`.trim(),unitCost:null,status:'missing',src:'Not in price book'}))}
+  if(!f.existing&&(f.btuInput||f.model||f.btuOutput)){const p=pickFurnace(f,tons,zones>1);
+    if(p.item){const ln=itemLine('furnace','furnace','equipment',p.item,furnaceDesc(p.item));if(p.sub){ln.planModel=f.model;ln.src=`Same size as plan's ${f.model} · Armstrong price list`+(p.item.date?` · ${p.item.date}`:'')}L.push(ln)}
+    else L.push(mkLine({key:'furnace',grp:'furnace',cat:'equipment',desc:`Furnace ${f.model||''} ${p.btu?Math.round(p.btu/1000)+',000 BTU':''}`.trim(),unitCost:null,status:'missing',src:p.btu?'No Armstrong furnace of this size in the price book':'Furnace size not found on the plan'}))}
   if(tons){const it=S.items.find(i=>i.kind==='ac'&&+i.attrs?.tons===tons);
     if(it)L.push(itemLine('ac','ac','equipment',it,`${tons} ton AC — condenser, coil, line set, installed${t.ac?.twoStageRequired?' (two-stage)':''}`));
     else L.push(mkLine({key:'ac',grp:'ac',cat:'equipment',desc:`${tons} ton AC — condenser, coil, line set, installed`,unitCost:null,status:'missing',src:'No AC price for this size'}))}
   const v=t.ventilator;if(v&&(v.type||v.model)){const vs=S.items.filter(i=>i.kind==='ventilator');
-    const it=vs.find(i=>norm(i.sku)===norm(v.model))||vs.find(i=>(i.attrs?.type||'').toUpperCase()===(v.type||'').toUpperCase());
-    if(it)L.push(itemLine('vent_unit','vent','equipment',it,`${v.type||it.attrs?.type||'ERV'} — ${it.sku} ${it.desc||''}`.trim()));
-    else L.push(mkLine({key:'vent_unit',grp:'vent',cat:'equipment',desc:`${v.type||'ERV'} ${v.model||''}`.trim(),unitCost:null,status:'missing',src:'Not in price book'}));
-    L.push(rateLine('vent_install','vent','vent',`${v.type||'ERV'} install, venting & control`,1,'vent_install','job'))}
+    const vt=ventType(v);const exact=v.model?vs.find(i=>norm(v.model).includes(norm(i.sku))):null;const it=exact||vs.find(i=>(i.attrs?.type||'').toUpperCase()===vt&&i.cost!=null)||vs.find(i=>i.cost!=null);
+    if(it){const ln=itemLine('vent_unit','vent','equipment',it,`${it.attrs?.type||vt} — ${it.sku} ${it.desc||''}`.trim());if(!exact&&v.model){ln.planModel=v.model;ln.src=`Replaces plan's ${v.model} · Vanee price list`+(it.date?` · ${it.date}`:'')}L.push(ln)}
+    else L.push(mkLine({key:'vent_unit',grp:'vent',cat:'equipment',desc:`${vt} ${v.model||''}`.trim(),unitCost:null,status:'missing',src:S.items.length?'No '+vt+' in the price book':'Price book is empty — load your data file'}));
+    L.push(rateLine('vent_install','vent','vent',`${vt} install, venting & control`,1,'vent_install','job'))}
   if(zones>1)L.push(rateLine('zoning','zoning','zoning',`Zoning — ${zones} zone dampers + ${zones} zone thermostats + panel`,zones,'zone_per','zone'));
   if(runs)L.push(rateLine('metal','metal','ductwork',`Metal ductwork — ${runs} supply runs, ${rets} returns, trunks per drawing${(job.master?.items||[]).length?' (see Master)':''}`,runs,retro?'metal_retro':'metal_new','run'));
   if(woHas(job,'rough'))L.push(woLine(job,'rough'));else if(runs)L.push(rateLine('lab_rough','labour','labour','Rough-in labour (ductwork, risers, exhaust, gas rough)',runs,retro?'lab_retro':'lab_new','run',share));
@@ -347,7 +379,9 @@ function autoTodos(job){const t=job.takeoff||{},L=[],lines=job.lines||[];const f
   lines.filter(l=>l.include&&l.itemId).forEach(l=>{const it=S.items.find(i=>i.id===l.itemId);const d=daysOld(it?.date);
     if(it&&it.confirmed&&d!=null&&d>STALE_DAYS)L.push({id:'stale-'+it.id,text:`Re-check ${it.sku} with supplier — price is from ${it.date} (${d} days old)`,sev:'med'})});
   if(f.model&&!f.existing){const fl=lines.find(l=>l.key==='furnace');const it=fl&&S.items.find(i=>i.id===fl.itemId);
-    if(it&&norm(it.sku)!==norm(f.model))L.push({id:'furn-spec',text:`Drawing specs ${f.model}. Priced ${it.sku} instead — get a price on the spec'd unit or confirm the substitute with the client`,sev:'med'})}
+    if(it&&!norm(f.model).includes(norm(it.sku)))L.push({id:'furn-spec',text:`Note: plan specs ${f.model}. Priced the same-size Armstrong ${it.sku} (${Math.round((+it.attrs?.btu||0)/1000)},000 BTU) from your Armstrong list — let the builder know`,sev:'low'})}
+  {const vl=lines.find(l=>l.key==='vent_unit'&&l.planModel);if(vl)L.push({id:'vent-spec',text:`Note: plan specs ${vl.planModel}. Priced ${vl.desc.split(' — ')[1]||vl.desc} from your Vanee list — let the builder know`,sev:'low'})}
+  if(!S.items.length)L.unshift({id:'pb-empty',text:'Your price book is empty, so furnaces, ERV/HRVs and other equipment have no prices. Load estimator-data.json (Price book & rates) once.',sev:'high'});
   if(f.existing)L.push({id:'furn-exist',text:'Drawing says the existing furnace stays — confirm whether you are relocating or replacing it',sev:'med'});
   if(t.ac?.twoStageRequired)L.push({id:'ac-2stage',text:'Drawing requires a two-stage AC (and furnace) for zoning — make sure the AC you price is two-stage',sev:'med'});
   if((t.gasAppliances||[]).length)L.push({id:'gas',text:`Confirm gas points with the builder: ${(t.gasAppliances||[]).join(', ')}`,sev:'med'});
@@ -488,7 +522,7 @@ function renderTop(){const jobs=S.jobs.filter(j=>j.status!=='history').sort((a,b
 function render(){const a=document.activeElement;if(a&&a.closest&&a.closest('#app')&&/INPUT|TEXTAREA|SELECT/.test(a.tagName)&&!S.forceRender){S.pendingRender=true;return}
   S.forceRender=false;S.pendingRender=false;renderTop();const app=$('#app');
   if(!S.ready.jobs&&!S.offline){app.innerHTML=`<div class="panel empty"><h2>Loading jobs and price book…</h2></div>`;return}
-  if(S.view==='new')app.innerHTML=viewNew();else if(S.view==='book')app.innerHTML=viewBook();else{const j=curJob();app.innerHTML=j?viewJob(j):viewHome()}}
+  if(S.view==='new')app.innerHTML=viewNew();else if(S.view==='book')app.innerHTML=viewBook();else{const j=curJob();app.innerHTML=j?viewJob(j)+previewOverlay():viewHome()}}
 function banner(){let ro=false;try{ro=!!window.parent.READ_ONLY}catch(e){}return S.offline?`<div class="notice warn">Can't reach the portal database, so nothing will be saved. Open the estimator from inside the portal.</div>`:ro?`<div class="notice warn">The portal is in preview mode, so nothing will be saved.</div>`:''}
 function importPanel(){return S.needsImport?`<section class="panel stack"><h2>Load your estimator data</h2><p class="muted small" style="max-width:60ch">This is a one-time step. Pick the estimator data file (estimator-data.json) to load your price book, rates and past jobs. They aren't stored in the app's code, so they don't end up in the public repo.</p><label class="btn primary" for="importfile" style="justify-self:start">Choose data file<input id="importfile" type="file" accept="application/json,.json" hidden data-ch="importfile"></label></section>`:''}
 function viewHome(){const jobs=S.jobs.filter(j=>j.status!=='history');return `${banner()}${importPanel()}<div class="panel empty"><h1>Start from a heating plan</h1>
@@ -501,7 +535,7 @@ function viewJob(j){if(S._todoFor!==j.id+'|'+(j.updatedAt||'')){S._todoFor=j.id+
   const body={estimate:tabEstimate,takeoff:tabTakeoff,master:tabMaster,materials:tabMaterials,wo:tabWO,equipment:tabEquipment}[S.tab]||tabEstimate;
   return `${banner()}<section class="panel jobhead">
    <div class="flex between"><span class="small muted">${esc(j.source||'')}</span>
-    <div class="flex"><button class="btn small" data-act="dupjob">Duplicate</button><button class="btn small" data-act="deljob">Delete</button></div></div>
+    <div class="flex"><button class="btn primary" data-act="preview">Preview estimate</button><button class="btn small" data-act="dupjob">Duplicate</button><button class="btn small" data-act="deljob">Delete</button></div></div>
    ${S.confirmDelete===j.id?`<div class="notice bad flex between"><span>Delete this job for good?</span><span class="flex"><button class="btn small" data-act="deljob-yes">Delete job</button><button class="btn small" data-act="deljob-no">Keep it</button></span></div>`:''}
    ${leadFields(j)}
    <div class="stats">
@@ -572,17 +606,12 @@ function tabEstimate(j){const lines=j.lines||[];const T=totals(j);const showAct=
    ${showAct?(()=>{const act=j.actuals?.[l.key];const v=act!=null&&c!=null?act-c:null;return `<td class="r"><input id="ac-${i}" type="number" step="any" data-ch="actual" data-k="${esc(l.key)}" value="${act??''}" placeholder="actual" style="width:90px"></td><td class="r num" style="color:${v>0?'var(--miss-fg)':v<0?'var(--ok-fg)':'inherit'}">${v==null?'':(v>0?'+':'')+money(v)}</td>`})():''}</tr>`}).join('');
   const groups={};lines.filter(l=>l.include).forEach(l=>{const g=l.grp||'other';(groups[g]=groups[g]||[]).push(l)});
   const hst=rv('hst')??13;const pay=[[10,'on signing'],[40,'after rough-in'],[40,'after basement'],[10,'at final mechanical turn-on']];
-  return `${todoPanel(j)}
-  <section class="panel stack"><div class="flex between"><h2>Numbers</h2><div class="flex"><div class="legend">${statusChip('confirmed')} your number ${statusChip('estimated')} from past jobs ${statusChip('missing')} needs a price</div>${showAct?(j.status==='closed'?statusChip('confirmed','Closed — feeding the rates'):`<button class="btn small primary" data-act="closejob">Close job & update rates</button>`):`<button class="btn small" data-act="showact">Enter final numbers</button>`}</div></div>
+  return `<div class="estgrid"><section class="panel stack"><div class="flex between"><h2>Estimate for the builder</h2>${handoffBtn('estimate','Open in Estimate builder',T.miss>0)}</div>${clientDoc(j)}</section>${todoPanel(j)}</div>
+  <section class="panel stack"><div class="flex between"><h2>Numbers <span class="muted small">edit costs, quantities and markups</span></h2><div class="flex"><div class="legend">${statusChip('confirmed')} your number ${statusChip('estimated')} from past jobs ${statusChip('missing')} needs a price</div>${showAct?(j.status==='closed'?statusChip('confirmed','Closed — feeding the rates'):`<button class="btn small primary" data-act="closejob">Close job & update rates</button>`):`<button class="btn small" data-act="showact">Enter final numbers</button>`}</div></div>
    <p class="small muted">Type a cost and it counts as confirmed. Equipment prices you type are saved to the price book with the date. Changes to rate-based lines are logged so the rates can learn.</p>
    <div class="scroll"><table><thead><tr><th></th><th>Item</th><th class="r">Qty</th><th class="r">Unit cost</th><th class="r">Cost</th><th class="r">Markup %</th><th class="r">Sell</th><th>Status</th>${showAct?'<th class="r">Actual</th><th class="r">Variance</th>':''}</tr></thead><tbody>${rows}</tbody>
    <tfoot><tr><td></td><td><button class="btn small" data-act="addline">+ Add line</button></td><td></td><td></td><td class="r num"><b>${money(T.cost)}</b></td><td class="r num">${T.sell?Math.round(T.margin*100)+'% margin':''}</td><td class="r num"><b>${money(T.sell)}</b></td><td></td>${showAct?`<td class="r num"><b>${money(actTot)}</b></td><td class="r num">${T.sell?Math.round((T.sell-actTot)/T.sell*100)+'% real margin':''}</td>`:''}</tr></tfoot></table></div>
-   ${showAct?'<p class="small muted">Type what each part really cost. Closing the job saves equipment actuals to the price book and adds this job\'s per-run numbers to the rates.</p>':''}</section>
-  <section class="panel stack"><div class="flex between"><h2>Estimate for the client</h2>${handoffBtn('estimate','Open in Estimate builder',T.miss>0)}</div>
-   <p class="small muted">Fills your Estimate builder with these sections and prices (sell, before HST). Save and send it from there, the same as always. Add-ons like the tankless and humidifier go in as optional lines.</p>
-   ${T.miss?`<div class="notice bad">${T.miss} line${T.miss>1?'s have':' has'} no price yet and won't be on the estimate until you add one above.</div>`:''}
-   <div class="scroll"><table><tbody>${estimateLines(j).map(l=>`<tr class="${l.opt?'excluded':''}"><td>${esc(l.d)}${l.opt?' <span class="chip info">Optional</span>':''}</td><td class="r num">${money2(l.p)}</td></tr>`).join('')}</tbody>
-   <tfoot><tr><td><b>Subtotal</b></td><td class="r num"><b>${money2(T.sell-estimateLines(j).filter(l=>l.opt).reduce((a,l)=>a+l.p,0))}</b></td></tr></tfoot></table></div></section>`}
+   ${showAct?'<p class="small muted">Type what each part really cost. Closing the job saves equipment actuals to the price book and adds this job\'s per-run numbers to the rates.</p>':''}</section>`}
 
 function tabMaterials(j){const M=j.materials||[];let sec='';
   return `<section class="panel stack"><div class="flex between"><h2>Other materials</h2><div class="flex"><button class="btn small" data-act="rebuildmat">Rebuild list</button><button class="btn small" data-act="copymat">Copy for supplier</button><button class="btn small primary" data-act="csvmat" ${S.downloads?'':'disabled'}>Download CSV</button></div></div>
@@ -842,6 +871,19 @@ function drawingLearn(){const rows=S.jobs.filter(j=>j.master?.final||j.wo?.final
   return `<section class="panel stack"><h2>Drawing reads you've checked</h2><p class="small muted">When you mark a Master or work order final, Claude uses it as an example on the next drawing. This shows how much you had to change.</p>${rows?`<div class="scroll"><table><thead><tr><th>Job</th><th>Master</th><th>Work orders</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<p class="muted small">None yet — mark a Master or work order final on a job.</p>'}</section>`}
 
 
+
+function clientDoc(j,big){const L=estimateLines(j),T=totals(j),hst=rv('hst')??13;const inc=L.filter(l=>!l.opt),opt=L.filter(l=>l.opt);const sub=inc.reduce((a,l)=>a+l.p,0),tax=sub*hst/100,tot=sub+tax;
+  const date=new Date().toLocaleDateString('en-CA',{year:'numeric',month:'long',day:'numeric'});
+  return `<div class="cdoc${big?' big':''}"><div class="cdoc-hd"><div><b>ECO AIR</b><span>HVAC Installation · AC Repair & Maintenance</span></div><div class="r"><div class="cdoc-t">ESTIMATE</div><span>${j.estNo?'#'+esc(j.estNo)+' · ':''}${date}</span></div></div>
+   <div class="cdoc-to"><div><span>Prepared for</span><b>${esc(j.client||'—')}</b></div><div><span>Service address</span><b>${esc([j.address,j.city].filter(Boolean).join(', ')||'—')}</b></div></div>
+   <div class="cdoc-h">Scope of work</div>
+   ${inc.map(l=>`<div class="cdoc-sec"><div class="cdoc-row"><b>${esc(GRP[l.g])}</b><b class="num">${money2(l.p)}</b></div><ul>${l.ls.map(x=>`<li>${esc(clientDesc(x))}</li>`).join('')}</ul></div>`).join('')||'<p class="muted small">Nothing priced yet.</p>'}
+   <table class="cdoc-tot"><tr><td>Subtotal</td><td class="num">${money2(sub)}</td></tr><tr><td>HST (${hst}%)</td><td class="num">${money2(tax)}</td></tr><tr class="g"><td>Total</td><td class="num">${money2(tot)}</td></tr></table>
+   ${opt.length?`<div class="cdoc-h">Optional upgrades</div>${opt.map(l=>`<div class="cdoc-row"><span>${esc(GRP[l.g])} — ${esc(l.ls.map(clientDesc).join('; '))}</span><b class="num">${money2(l.p)} + HST</b></div>`).join('')}`:''}
+   <div class="cdoc-h">Payment schedule</div><div class="cdoc-pay">${[[10,'on signing'],[40,'after rough-in'],[40,'after basement'],[10,'at final turn-on']].map(([p,w])=>`<div><b>${p}%</b> ${w}<span class="num">${money2(tot*p/100)}</span></div>`).join('')}</div>
+   ${T.miss?`<div class="notice bad">${T.miss} item${T.miss>1?'s have':' has'} no price yet and ${T.miss>1?'are':'is'} not on this estimate.</div>`:''}</div>`}
+function previewOverlay(){const j=curJob();if(!S.preview||!j||S.view!=='job')return'';return `<div class="ovl" data-act="closepreview"><div class="ovl-card" role="dialog" aria-label="Estimate preview"><div class="flex between ovl-bar"><h2>Estimate preview</h2><div class="flex">${handoffBtn('estimate','Open in Estimate builder',totals(j).miss>0)}<button class="btn" data-act="closepreview">Close</button></div></div>${clientDoc(j,true)}</div></div>`}
+
 /* ---------- hand-off to the portal's own builders ---------- */
 function inPortal(){try{return window.parent!==window&&typeof window.parent.eaOpenPrefilled==='function'}catch(e){return false}}
 function handoffBtn(kind,label,warn){return inPortal()?`<button class="btn ${warn?'':'primary'}" data-act="handoff" data-k="${kind}" title="Opens in a new tab">${label} ↗</button>`:`<span class="small muted">Open the estimator from the portal to use your builders</span>`}
@@ -849,7 +891,7 @@ function estimateLines(j){const groups={};(j.lines||[]).filter(l=>l.include&&lin
   return GRP_ORDER.filter(g=>groups[g]).map((g,n)=>{const ls=groups[g];const sell=ls.reduce((a,l)=>a+(lineSell(l)||0),0);
     const d=ls.length===1&&!['labour','design'].includes(g)?clientDesc(ls[0]):GRP[g];return{id:'ai'+n,d,q:1,p:Math.round(sell),opt:g==='humid'||g==='tankless',g,ls}})}
 function clientDesc(l){const by={lab_rough:'Rough-in installation: ductwork, risers, returns, exhaust and dryer venting',lab_base:'Basement installation: trunks, supply and return runs, plenum and drop',lab_tiein:'Equipment set and tie-in',lab_startup:'Startup, commissioning and balancing'};
-  return by[l.key]||String(l.desc||'').replace(/\s*\(see Master\)/i,'').replace(/,\s*trunks per drawing/i,', trunks per drawing').trim()}
+  return by[l.key]||(String(l.desc||'').replace(/\s*\(see Master\)/i,'').trim()+(l.planModel?` (in place of the ${l.planModel} shown on the plan)`:''))}
 function estimateForm(j){const L=estimateLines(j);const d=new Date(),v=new Date(Date.now()+90*864e5),iso=x=>x.toISOString().slice(0,10);
   const f={fmaster:j.master?.fields?.fmaster||'',fbuilder:j.master?.fields?.fname||'',fsite:j.master?.fields?.fsite||'',flot:j.wo?.fields?.lot||j.master?.fields?.flot||'',fdt:iso(d),fvl:iso(v),
     fnm:j.client||'',fad:j.address||'',fcy:j.city||'',ftx:String(rv('hst')??13),
@@ -900,6 +942,8 @@ const ACT={
  wofinal:()=>{const j=curJob();['rough','bsmt'].forEach(t=>{if(j.wo[t])j.wo[t].ai={}});j.wo.final=true;syncWOLines(j);commit(j);toast('Work orders marked final — the next drawing read learns from them')},
  woblank:()=>{const j=curJob();j.wo={tier:'standard',veh:S.defVeh??3.5,fields:{model:j.master?.fields?.fmodel||''},notes:{},flags:[],rough:{rows:{},opts:[],ai:{}},bsmt:{rows:{},opts:[],ai:{}}};S.woAll={rough:true,bsmt:true};commit(j)},
  exportdata:()=>exportData(),
+ preview:()=>{S.preview=true;S.forceRender=true;render()},
+ closepreview:(b,e)=>{if(e&&e.target.closest('.ovl-card')&&!e.target.closest('[data-act="closepreview"].btn'))return;S.preview=false;S.forceRender=true;render()},
  showact:()=>{S.showActuals=true;S.forceRender=true;render()},
  handoff:b=>handoff(b.dataset.k),
  view:b=>{S.view=b.dataset.v;if(S.view==='new'&&S.busy?.error)S.busy=null;S.forceRender=true;render();window.scrollTo(0,0)},
@@ -1029,6 +1073,7 @@ function estimatePdf(j){const {jsPDF}=window.jspdf||{};if(!jsPDF)throw new Error
   return d.output('blob')}
 
 /* ---------- events ---------- */
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&S.preview){S.preview=false;S.forceRender=true;render()}});
 document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)return;e.preventDefault();ACT[b.dataset.act]?.(b,e)});
 document.addEventListener('change',e=>{const el=e.target.closest('[data-ch]');if(!el)return;S.forceRender=true;CH[el.dataset.ch]?.(el)});
 document.addEventListener('focusout',()=>setTimeout(()=>{if(S.pendingRender&&!(document.activeElement&&/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)&&document.activeElement.closest('#app')))render()},0));
@@ -1042,7 +1087,9 @@ document.addEventListener('dragleave',e=>{const d=e.target.closest&&e.target.clo
 document.addEventListener('drop',e=>{const d=e.target.closest&&e.target.closest('#drop');if(!d)return;e.preventDefault();d.classList.remove('over');const fs=[...(e.dataTransfer?.files||[])];if(fs.length)startRead(fs)});
 
 /* ---------- boot ---------- */
-function buildPending(){S.jobs.forEach(ensureWONames);if(!(S.ready.items&&S.ready.rates&&S.ready.jobs!==undefined))return;S.jobs.forEach(j=>{if(j.status!=='history'&&j.takeoff&&!(j.lines||[]).length&&!j._building){j._building=true;rebuild(j);delete j._building;saveJob(j)}})}
+function buildPending(){S.jobs.forEach(ensureWONames);
+  // once per session, refresh each open job's lines against the current price book (your own numbers are kept)
+  if(S.ready.items&&S.ready.rates&&S.items.length){S._rebuilt=S._rebuilt||{};S.jobs.forEach(j=>{if(S._rebuilt[j.id]||j.status==='history'||!j.takeoff||!(j.lines||[]).length)return;S._rebuilt[j.id]=1;const before=JSON.stringify(j.lines);rebuild(j);if(JSON.stringify(j.lines)!==before&&S.db)saveJob(j)})}if(!(S.ready.items&&S.ready.rates&&S.ready.jobs!==undefined))return;S.jobs.forEach(j=>{if(j.status!=='history'&&j.takeoff&&!(j.lines||[]).length&&!j._building){j._building=true;rebuild(j);delete j._building;saveJob(j)}})}
 try{if(window.pdfjsLib)pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'}catch(e){}
 render();
 function applyPortalPrices(p){if(!p)return;try{

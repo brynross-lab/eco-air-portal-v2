@@ -148,6 +148,11 @@ details summary{cursor:pointer;font-weight:600}
 
 .flagline{font-size:13px;padding:4px 0}
 
+/* lead fields in the header, to-do list */
+.kv.lead{grid-template-columns:2fr 1fr 2fr 1fr 1.3fr 1fr}
+.kv.lead input,.kv.lead select{width:100%!important}
+@media (max-width:900px){.kv.lead{grid-template-columns:1fr 1fr}}
+.todolist{max-height:340px;overflow:auto;padding-right:4px}
 /* ── Eco Air Portal v2 look (same tokens and type as styles.css / v2-skin.css) ── */
 :root{--bg:#EEF1EF;--surface:#FFFFFF;--surface2:#F3F6F4;--line:#D3DAD6;--fg:#17221D;--muted:#5C6963;
   --brand:#1b5e38;--brand-ink:#FFFFFF;--brand-soft:#E3EFE7;--accent:#1b5e38;--accent-dark:#033824;
@@ -239,7 +244,7 @@ const KINDS=['furnace','ac','ventilator','thermostat','water-heater','humidifier
 const STALE_DAYS=90;
 
 /* ---------- state ---------- */
-const S={images:{},woAll:{},rates:{},items:[],jobs:[],jobId:null,view:'job',tab:'overview',ready:{rates:false,items:false,jobs:false},db:null,sample:null,downloads:null,offline:false,busy:null,pendingRender:false,search:''};
+const S={images:{},woAll:{},rates:{},items:[],jobs:[],jobId:null,view:'job',tab:'estimate',ready:{rates:false,items:false,jobs:false},db:null,sample:null,downloads:null,offline:false,busy:null,pendingRender:false,search:''};
 const dirty=new Set(); const saveTimers={}; const writeChains={};
 
 /* ---------- helpers ---------- */
@@ -335,9 +340,8 @@ function autoTodos(job){const t=job.takeoff||{},L=[],lines=job.lines||[];const f
   lines.filter(l=>l.include&&lineStatus(l)==='missing').forEach(l=>L.push({id:'miss-'+l.key,text:`Get a price: ${l.desc}`,sev:'high'}));
   lines.filter(l=>l.include&&l.itemId&&lineStatus(l)==='estimated').forEach(l=>L.push({id:'est-'+l.key,text:`Confirm price: ${l.desc} (now ${money(l.unitCost)} from ${l.src})`,sev:'med'}));
   const er=lines.filter(l=>l.include&&!l.itemId&&!l.fromWO&&lineStatus(l)==='estimated');
-  const mo=(job.master?.items||[]).filter(i=>i.ai&&!i.checked).length;if(!job.master)L.push({id:'m-none',text:'Build the Master from the drawing (Master tab) so the sheet metal order can go to the supplier',sev:'high'});else if(mo)L.push({id:'m-open',text:`Check ${mo} Master items Claude measured before sending to the supplier`,sev:'med'});
-  (job.master?.flags||[]).forEach((x,i)=>L.push({id:'mf-'+i,text:'Master: '+x,sev:'med',from:'drawing'}));
-  if(job.wo){['rough','bsmt'].forEach(t=>{const c=woCalc(job,t);if(c.aiOpen)L.push({id:'wo-'+t,text:`Check ${c.aiOpen} ${WO_DATA[t].label} work order quantities Claude counted (now ${money(c.tot)})`,sev:'med'})});(job.wo.flags||[]).forEach((x,i)=>L.push({id:'wf-'+i,text:'Work order: '+x,sev:'med',from:'drawing'}))}
+  const mo=(job.master?.items||[]).filter(i=>i.ai&&!i.checked).length;if(!job.master)L.push({id:'m-none',text:'No Master yet — re-read the drawing from the Master tab',sev:'high'});else if(!job.master.final)L.push({id:'m-open',text:job.master.savedKey?`Check Master ${job.master.savedKey} in the Measure sheet before ordering`:'Check the Master in the Measure sheet before ordering',sev:'med'});
+  if(job.wo){['rough','bsmt'].forEach(t=>{const c=woCalc(job,t);if(c.aiOpen)L.push({id:'wo-'+t,text:`Open the ${WO_DATA[t].label} work order from the Work orders tab, check Claude's counts and save it (now ${money(c.tot)})`,sev:'med'})})}
   else if(supplyTotal(t))L.push({id:'wo-none',text:'Labour is from per-run rates — build the work orders from the drawing for union piece-rate labour',sev:'med'});
   if(er.length)L.push({id:'est-rates',text:`Confirm ${er.length} numbers based on past jobs (${er.map(l=>({vent_install:'ERV install',zoning:'zoning',metal:'metal',lab_rough:'rough-in labour',lab_base:'basement labour',lab_tiein:'tie-in labour',lab_startup:'startup labour',gas:'gas',fans:'fans',dryer:'dryer vents',design:'heating plan'})[l.key]||l.key).join(', ')}) — tick or change them on the Estimate tab`,sev:'med'});
   lines.filter(l=>l.include&&l.itemId).forEach(l=>{const it=S.items.find(i=>i.id===l.itemId);const d=daysOld(it?.date);
@@ -491,22 +495,15 @@ function viewHome(){const jobs=S.jobs.filter(j=>j.status!=='history');return `${
   <p class="muted" style="max-width:56ch">Upload the drawing and the estimator reads the equipment schedule and run counts, then builds the cost sheet, to-dos, supplier material list and work orders from your price book and past jobs.</p>
   <div class="flex"><button class="btn primary" data-act="view" data-v="new">Upload heating plan</button>${jobs.length?`<span class="muted">or open one of ${jobs.length} job${jobs.length>1?'s':''} from the top bar</span>`:''}</div></div>`}
 function statusChip(st,label){return `<span class="chip ${st}">${label||({confirmed:'Confirmed',estimated:'Not confirmed',missing:'Missing'}[st])}</span>`}
-function viewJob(j){const T=totals(j);const todosOpen=(j.todos||[]).filter(t=>!t.done).length;const st=j.settings||{};
+function viewJob(j){if(S._todoFor!==j.id+'|'+(j.updatedAt||'')){S._todoFor=j.id+'|'+(j.updatedAt||'');const before=JSON.stringify(j.todos||[]);j.todos=mergeTodos(j);if(JSON.stringify(j.todos)!==before&&S.db)saveJob(j)}const T=totals(j);const todosOpen=(j.todos||[]).filter(t=>!t.done).length;const st=j.settings||{};
   const mOpen=(j.master?.items||[]).filter(i=>i.ai&&!i.checked).length,wOpen=j.wo?(woCalc(j,'rough').aiOpen+woCalc(j,'bsmt').aiOpen):0;
-  const tabs=[['overview','Takeoff & to-dos',todosOpen],['estimate','Estimate',T.est+T.miss],['master','Master',mOpen],['wo','Work orders',wOpen],['materials','Other materials'],['equipment','Equipment'],['actuals','Final numbers']];
-  const body={overview:tabOverview,estimate:tabEstimate,master:tabMaster,materials:tabMaterials,wo:tabWO,equipment:tabEquipment,actuals:tabActuals}[S.tab]||tabOverview;
+  const tabs=[['estimate','Estimate',todosOpen],['takeoff','Takeoff'],['master','Master'],['wo','Work orders'],['materials','Other materials'],['equipment','Equipment']];
+  const body={estimate:tabEstimate,takeoff:tabTakeoff,master:tabMaster,materials:tabMaterials,wo:tabWO,equipment:tabEquipment}[S.tab]||tabEstimate;
   return `${banner()}<section class="panel jobhead">
-   <div class="flex between"><div class="stack" style="gap:2px"><span class="small muted">${esc(j.source||'')}</span><h1>${esc(j.address)}</h1><span class="muted">${esc([j.city,j.client].filter(Boolean).join(' · '))}</span></div>
+   <div class="flex between"><span class="small muted">${esc(j.source||'')}</span>
     <div class="flex"><button class="btn small" data-act="dupjob">Duplicate</button><button class="btn small" data-act="deljob">Delete</button></div></div>
    ${S.confirmDelete===j.id?`<div class="notice bad flex between"><span>Delete this job for good?</span><span class="flex"><button class="btn small" data-act="deljob-yes">Delete job</button><button class="btn small" data-act="deljob-no">Keep it</button></span></div>`:''}
-   <div class="row">
-    <div class="field"><label for="f-addr">Address</label><input id="f-addr" data-ch="jobf" data-f="address" value="${esc(j.address)}"></div>
-    <div class="field"><label for="f-city">City</label><input id="f-city" data-ch="jobf" data-f="city" value="${esc(j.city)}" style="width:130px"></div>
-    <div class="field"><label for="f-client">Client / builder</label><input id="f-client" data-ch="jobf" data-f="client" value="${esc(j.client)}"></div>
-    <div class="field"><label for="f-est">Estimate #</label><input id="f-est" data-ch="jobf" data-f="estNo" value="${esc(j.estNo)}" style="width:90px"></div>
-    <div class="field"><label for="f-type">Job type</label><select id="f-type" data-ch="jobtype">${[['new','New build'],['addition','Addition'],['retrofit','Retrofit / reno']].map(([v,l])=>`<option value="${v}" ${st.jobType===v?'selected':''}>${l}</option>`).join('')}</select></div>
-    <div class="field"><label for="f-status">Status</label><select id="f-status" data-ch="jobf" data-f="status">${['draft','sent','won','lost','closed'].map(v=>`<option ${j.status===v?'selected':''}>${v}</option>`).join('')}</select></div>
-   </div>
+   ${leadFields(j)}
    <div class="stats">
     <div class="stat"><div class="k">Cost</div><div class="v">${money(T.cost)}</div></div>
     <div class="stat"><div class="k">Sell (before HST)</div><div class="v">${money(T.sell)}</div></div>
@@ -518,10 +515,9 @@ function viewJob(j){const T=totals(j);const todosOpen=(j.todos||[]).filter(t=>!t
   <nav class="tabs" role="tablist">${tabs.map(([k,l,c])=>`<button class="tab" role="tab" aria-selected="${S.tab===k}" data-act="tab" data-v="${k}">${l}${c?`<span class="count">${c}</span>`:''}</button>`).join('')}</nav>
   ${body(j)}`}
 
-function tabOverview(j){const t=j.takeoff||{},st=j.settings||{},ad=st.addOns||{},f=t.furnace||{},ac=t.ac||{},v=t.ventilator||{};
+function tabTakeoff(j){const t=j.takeoff||{},st=j.settings||{},ad=st.addOns||{},f=t.furnace||{},ac=t.ac||{},v=t.ventilator||{};
   const inp=(path,val,w=80,type='number')=>`<input id="t-${path.replace(/\./g,'-')}" type="${type}" data-ch="tk" data-p="${path}" value="${esc(val??'')}" style="width:${w}px">`;
-  const todos=j.todos||[];
-  return `<div class="grid2"><section class="panel stack"><div class="flex between"><h2>Takeoff</h2><button class="btn primary small" data-act="rebuild">Rebuild estimate from takeoff</button></div>
+  return `<section class="panel stack"><div class="flex between"><h2>Takeoff</h2><button class="btn primary small" data-act="rebuild">Rebuild estimate from takeoff</button></div>
    <p class="small muted">Read from the drawing${t.project?.designer?` (${esc(t.project.designer)}${t.project.drawingNo?' '+esc(t.project.drawingNo):''})`:''}. Fix any count here, then rebuild. Numbers you typed on the Estimate tab are kept.</p>
    <div class="scroll"><table class="floors"><thead><tr><th>Floor</th><th class="r">Supply</th><th class="r">Returns</th><th class="r">Fans</th><th></th></tr></thead><tbody>
    ${(t.floors||[]).map((fl,i)=>`<tr><td><input id="fl-n-${i}" data-ch="floor" data-i="${i}" data-f="name" value="${esc(fl.name)}" style="width:130px"></td>${['supply','returns','fans'].map(k=>`<td class="r"><input id="fl-${k}-${i}" type="number" min="0" data-ch="floor" data-i="${i}" data-f="${k}" value="${fl[k]??0}"></td>`).join('')}<td><button class="btn small" data-act="delfloor" data-i="${i}" aria-label="Remove floor">✕</button></td></tr>`).join('')}
@@ -544,13 +540,26 @@ function tabOverview(j){const t=j.takeoff||{},st=j.settings||{},ad=st.addOns||{}
    <div class="flex"><span class="small muted">Add-ons:</span>${[['tankless','Tankless water heater'],['humidifier','Humidifier'],['design','Heating plan / heat loss']].map(([k,l])=>`<label class="flex" style="gap:4px"><input type="checkbox" data-ch="addon" data-k="${k}" ${ad[k]?'checked':''}> ${l}</label>`).join('')}</div>
    ${(t.trunks||[]).length?`<details><summary>Trunks & risers (${t.trunks.length})</summary><div class="small mono" style="margin-top:6px">${t.trunks.map(esc).join('<br>')}</div></details>`:''}
    ${(t.notes||[]).length?`<details><summary>Design notes that affect price (${t.notes.length})</summary><ul class="small">${t.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul></details>`:''}
-  </section>
-  <section class="panel stack"><div class="flex between"><h2>To-dos to finish the numbers</h2><button class="btn small" data-act="aireview" ${S.ai?'':'disabled'}>${S.busy?.review?'Reviewing…':'Ask Claude to review'}</button></div>
-   <div>${todos.length?todos.map(td=>`<div class="todo ${td.done?'done':''} sev-${td.sev||'low'}"><input type="checkbox" aria-label="Done" data-ch="todo" data-id="${esc(td.id)}" ${td.done?'checked':''}><div><div class="t">${esc(td.text)}</div><div class="tag">${td.from==='drawing'?'From drawing':td.from==='ai'?'Claude review':td.auto?'Auto':'Yours'}</div></div>${td.auto?'':`<button class="btn small" data-act="deltodo" data-id="${esc(td.id)}" aria-label="Remove">✕</button>`}</div>`).join(''):'<p class="muted">Nothing left to check.</p>'}</div>
-   <form class="flex" data-form="todo"><input id="newtodo" placeholder="Add a to-do (e.g. call Air Heat re: coil price)" style="flex:1"><button class="btn small">Add</button></form>
-  </section></div>`}
+  </section>`}
 
-function tabEstimate(j){const lines=j.lines||[];const T=totals(j);
+function todoPanel(j){const todos=j.todos||[];
+  return `<section class="panel stack"><div class="flex between"><h2>To-dos <span class="muted small">${todos.filter(t=>!t.done).length} open</span></h2><button class="btn small" data-act="aireview" ${S.ai?'':'disabled'}>${S.busy?.review?'Reviewing…':'Ask Claude to review'}</button></div>
+   <div class="todolist">${todos.length?todos.map(td=>`<div class="todo ${td.done?'done':''} sev-${td.sev||'low'}"><input type="checkbox" aria-label="Done" data-ch="todo" data-id="${esc(td.id)}" ${td.done?'checked':''}><div><div class="t">${esc(td.text)}</div><div class="tag">${td.from==='drawing'?'From drawing':td.from==='ai'?'Claude review':td.auto?'Auto':'Yours'}</div></div>${td.auto?'':`<button class="btn small" data-act="deltodo" data-id="${esc(td.id)}" aria-label="Remove">✕</button>`}</div>`).join(''):'<p class="muted">Nothing left to check.</p>'}</div>
+   <form class="flex" data-form="todo"><input id="newtodo" placeholder="Add a to-do (e.g. call Air Heat re: coil price)" style="flex:1"><button class="btn small">Add</button></form>
+  </section>`}
+
+
+function leadFields(j){const st=j.settings||{};
+  return `<div class="kv lead">    <div class="field"><label for="f-addr">Address</label><input id="f-addr" data-ch="jobf" data-f="address" value="${esc(j.address)}"></div>
+    <div class="field"><label for="f-city">City</label><input id="f-city" data-ch="jobf" data-f="city" value="${esc(j.city)}" style="width:130px"></div>
+    <div class="field"><label for="f-client">Client / builder</label><input id="f-client" data-ch="jobf" data-f="client" value="${esc(j.client)}"></div>
+    <div class="field"><label for="f-est">Estimate #</label><input id="f-est" data-ch="jobf" data-f="estNo" value="${esc(j.estNo)}" style="width:90px"></div>
+    <div class="field"><label for="f-type">Job type</label><select id="f-type" data-ch="jobtype">${[['new','New build'],['addition','Addition'],['retrofit','Retrofit / reno']].map(([v,l])=>`<option value="${v}" ${st.jobType===v?'selected':''}>${l}</option>`).join('')}</select></div>
+    <div class="field"><label for="f-status">Status</label><select id="f-status" data-ch="jobf" data-f="status">${['draft','sent','won','lost','closed'].map(v=>`<option ${j.status===v?'selected':''}>${v}</option>`).join('')}</select></div>
+</div>`}
+
+function tabEstimate(j){const lines=j.lines||[];const T=totals(j);const showAct=S.showActuals||['won','closed'].includes(j.status)||Object.keys(j.actuals||{}).length>0;
+  let actTot=0;lines.forEach(l=>{if(!l.include)return;const a=j.actuals?.[l.key];actTot+=a!=null?a:(lineCost(l)||0)});
   const rows=lines.map((l,i)=>{const st=lineStatus(l),c=lineCost(l),s=lineSell(l);return `<tr class="${l.include?st:'excluded'}">
    <td><input type="checkbox" aria-label="Include" data-ch="line" data-i="${i}" data-f="include" ${l.include?'checked':''}></td>
    <td style="min-width:240px"><input id="ld-${i}" data-ch="line" data-i="${i}" data-f="desc" value="${esc(l.desc)}" style="width:100%"><div class="src">${esc(l.src||'')}</div></td>
@@ -559,13 +568,16 @@ function tabEstimate(j){const lines=j.lines||[];const T=totals(j);
    <td class="r num">${money(c)}</td>
    <td class="r"><input id="lm-${i}" class="qty" type="number" step="any" data-ch="line" data-i="${i}" data-f="mk" value="${lineMk(l)}" title="${l.mk==null?'Default markup for '+l.cat:'Custom markup'}"></td>
    <td class="r num"><b>${money(s)}</b></td>
-   <td>${statusChip(st)}${st==='estimated'&&l.unitCost!=null&&!l.fromWO?` <button class="btn small" data-act="confirmline" data-i="${i}">Confirm</button>`:''}${l.key.startsWith('m-')?` <button class="btn small" data-act="delline" data-i="${i}" aria-label="Remove line">✕</button>`:''}</td></tr>`}).join('');
+   <td>${statusChip(st)}${st==='estimated'&&l.unitCost!=null&&!l.fromWO?` <button class="btn small" data-act="confirmline" data-i="${i}">Confirm</button>`:''}${l.key.startsWith('m-')?` <button class="btn small" data-act="delline" data-i="${i}" aria-label="Remove line">✕</button>`:''}</td>
+   ${showAct?(()=>{const act=j.actuals?.[l.key];const v=act!=null&&c!=null?act-c:null;return `<td class="r"><input id="ac-${i}" type="number" step="any" data-ch="actual" data-k="${esc(l.key)}" value="${act??''}" placeholder="actual" style="width:90px"></td><td class="r num" style="color:${v>0?'var(--miss-fg)':v<0?'var(--ok-fg)':'inherit'}">${v==null?'':(v>0?'+':'')+money(v)}</td>`})():''}</tr>`}).join('');
   const groups={};lines.filter(l=>l.include).forEach(l=>{const g=l.grp||'other';(groups[g]=groups[g]||[]).push(l)});
   const hst=rv('hst')??13;const pay=[[10,'on signing'],[40,'after rough-in'],[40,'after basement'],[10,'at final mechanical turn-on']];
-  return `<section class="panel stack"><div class="flex between"><h2>Cost sheet</h2><div class="legend">${statusChip('confirmed')} your number ${statusChip('estimated')} from past jobs ${statusChip('missing')} needs a price</div></div>
+  return `${todoPanel(j)}
+  <section class="panel stack"><div class="flex between"><h2>Numbers</h2><div class="flex"><div class="legend">${statusChip('confirmed')} your number ${statusChip('estimated')} from past jobs ${statusChip('missing')} needs a price</div>${showAct?(j.status==='closed'?statusChip('confirmed','Closed — feeding the rates'):`<button class="btn small primary" data-act="closejob">Close job & update rates</button>`):`<button class="btn small" data-act="showact">Enter final numbers</button>`}</div></div>
    <p class="small muted">Type a cost and it counts as confirmed. Equipment prices you type are saved to the price book with the date. Changes to rate-based lines are logged so the rates can learn.</p>
-   <div class="scroll"><table><thead><tr><th></th><th>Item</th><th class="r">Qty</th><th class="r">Unit cost</th><th class="r">Cost</th><th class="r">Markup %</th><th class="r">Sell</th><th>Status</th></tr></thead><tbody>${rows}</tbody>
-   <tfoot><tr><td></td><td><button class="btn small" data-act="addline">+ Add line</button></td><td></td><td></td><td class="r num"><b>${money(T.cost)}</b></td><td class="r num">${T.sell?Math.round(T.margin*100)+'% margin':''}</td><td class="r num"><b>${money(T.sell)}</b></td><td></td></tr></tfoot></table></div></section>
+   <div class="scroll"><table><thead><tr><th></th><th>Item</th><th class="r">Qty</th><th class="r">Unit cost</th><th class="r">Cost</th><th class="r">Markup %</th><th class="r">Sell</th><th>Status</th>${showAct?'<th class="r">Actual</th><th class="r">Variance</th>':''}</tr></thead><tbody>${rows}</tbody>
+   <tfoot><tr><td></td><td><button class="btn small" data-act="addline">+ Add line</button></td><td></td><td></td><td class="r num"><b>${money(T.cost)}</b></td><td class="r num">${T.sell?Math.round(T.margin*100)+'% margin':''}</td><td class="r num"><b>${money(T.sell)}</b></td><td></td>${showAct?`<td class="r num"><b>${money(actTot)}</b></td><td class="r num">${T.sell?Math.round((T.sell-actTot)/T.sell*100)+'% real margin':''}</td>`:''}</tr></tfoot></table></div>
+   ${showAct?'<p class="small muted">Type what each part really cost. Closing the job saves equipment actuals to the price book and adds this job\'s per-run numbers to the rates.</p>':''}</section>
   <section class="panel stack"><div class="flex between"><h2>Estimate for the client</h2>${handoffBtn('estimate','Open in Estimate builder',T.miss>0)}</div>
    <p class="small muted">Fills your Estimate builder with these sections and prices (sell, before HST). Save and send it from there, the same as always. Add-ons like the tankless and humidifier go in as optional lines.</p>
    ${T.miss?`<div class="notice bad">${T.miss} line${T.miss>1?'s have':' has'} no price yet and won't be on the estimate until you add one above.</div>`:''}
@@ -592,14 +604,6 @@ function tabEquipment(j){const eq=(j.lines||[]).map((l,i)=>({l,i})).filter(x=>x.
     <td><select id="eqs-${i}" data-ch="line" data-i="${i}" data-f="sourcing">${['Needs quote','Quoted','Ordered','On site'].map(x=>`<option ${(l.sourcing||(st==='confirmed'?'Quoted':'Needs quote'))===x?'selected':''}>${x}</option>`).join('')}</select></td>
     <td><input id="eqp-${i}" data-ch="line" data-i="${i}" data-f="supplier" value="${esc(l.supplier||(it?.source?.includes('Air Heat')?'Air Heat Supplies':''))}" style="width:150px"></td></tr>`}).join('')||'<tr><td colspan="6" class="muted">No equipment on this job.</td></tr>'}
    </tbody></table></div></section>`}
-
-function tabActuals(j){const lines=(j.lines||[]).filter(l=>l.include);let e=0,a=0;
-  const rows=(j.lines||[]).map((l,i)=>{if(!l.include)return'';const c=lineCost(l);const act=j.actuals?.[l.key];e+=c||0;a+=act!=null?act:(c||0);const v=act!=null&&c!=null?act-c:null;
-    return `<tr><td>${esc(l.desc)}</td><td class="r num">${money(c)}</td><td class="r"><input id="ac-${i}" type="number" step="any" data-ch="actual" data-k="${esc(l.key)}" value="${act??''}" placeholder="actual"></td><td class="r num" style="color:${v>0?'var(--miss-fg)':v<0?'var(--ok-fg)':'inherit'}">${v==null?'':(v>0?'+':'')+money(v)}</td></tr>`}).join('');
-  const T=totals(j);return `<section class="panel stack"><div class="flex between"><h2>Final numbers</h2>${j.status==='closed'?statusChip('confirmed','Closed — feeding the rates'):`<button class="btn primary small" data-act="closejob">Close job & update rates</button>`}</div>
-   <p class="small muted">Enter what each part really cost once the job is done. Closing the job saves equipment actuals to the price book and adds this job's per-run metal and labour to the learning in Price book & rates.</p>
-   <div class="scroll"><table><thead><tr><th>Line</th><th class="r">Estimated cost</th><th class="r">Actual cost</th><th class="r">Variance</th></tr></thead><tbody>${rows}</tbody>
-   <tfoot><tr><td><b>Total</b></td><td class="r num"><b>${money(e)}</b></td><td class="r num"><b>${money(a)}</b></td><td class="r num"><b>${money(a-e)}</b></td></tr><tr><td>Sold (before HST)</td><td></td><td class="r num">${money(T.sell)}</td><td class="r num">${T.sell?Math.round((T.sell-a)/T.sell*100)+'% real margin':''}</td></tr></tfoot></table></div></section>`}
 
 function viewNew(){const b=S.busy;
   if(b&&b.parts){const lab={takeoff:'Takeoff & cost sheet',master:'Master (sheet metal measure)',wo:'Rough-In & Basement work orders'};
@@ -652,6 +656,8 @@ let BSMT_RA=[{n:'Basement R/A',p:28.82,r:1},{n:'First Floor R/A',p:28.82,r:1},{n
 let BSMT_EL=[{n:'Dryer Vents',p:23.51},{n:'Booster Fan',p:32.97},{n:'Lint Trap',p:33.32},{n:'7" + Runs',p:14.41},{n:'Bathroom Fan',p:23.51},{n:'Hang HRV',p:50.23},{n:'HRV Runs',p:30.99},{n:'Additional Zones (Hi-V)',p:31.84},{n:'Air Cleaner Cabinet',p:28.82},{n:'Return Mount Flex',p:46.46},{n:'Canvas Connections',p:28.82,r:1}];
 let BSMT_ER=[{n:'High Basement (per)',p:4.03},{n:'Zone System',p:2.95},{n:'Snap Fittings',p:17.49},{n:'Cut Holes',p:4.84},{n:'Perfect Platform',p:53.00},{n:'Level Change',p:28.82},{n:'Return Air Box for AC',p:35.61},{n:'Low Level Runs',p:2.95},{n:'Installation of Cooling Coil',p:60.93}];
 let BSMT_O=[{id:'bo1',n:'Furnace Set Up',s:'$110.67',fl:110.67},{id:'bo6',n:'Pre-Duct (Return Later)',s:'$71.30',fl:71.30},{id:'bo2',n:'Cover Holes',s:'$6.60',fl:6.60},{id:'bo3',n:'Scrap Pick Up',s:'$15.61',fl:15.61},{id:'bo4',n:'Tape',s:'$6.65/run',pr:6.65},{id:'bo5',n:'One-Off (×1.5)',s:'×1.5',pct:50}];
+const WO_DEFAULT_NAMES={ra:ROUGH_RA.map(x=>x.n),du:ROUGH_DU.map(x=>x.n),vc1:ROUGH_VL.map(x=>x.n),vc2:ROUGH_VR.map(x=>x.n),bsa:BSMT_SA.map(x=>x.n),bra:BSMT_RA.map(x=>x.n),bec1:BSMT_EL.map(x=>x.n),bec2:BSMT_ER.map(x=>x.n)};
+function ensureWONames(j){if(!j.wo)return;['rough','bsmt'].forEach(t=>{const s=j.wo[t];if(!s||!s.rows)return;s.names=s.names||{};Object.entries(s.rows).forEach(([sid,m])=>Object.keys(m||{}).forEach(i=>{const k=sid+':'+i;if(!s.names[k]&&WO_DEFAULT_NAMES[sid]&&WO_DEFAULT_NAMES[sid][+i])s.names[k]=WO_DEFAULT_NAMES[sid][+i]}))})}
 let WO_TIERS={standard:{label:'Standard',rr:21.68,rb:28.82},custom:{label:'Custom',rr:31.76,rb:31.76}};
 let WO_DATA={
  rough:{label:'Rough-In',sub:'HVAC Installation & Rough-In',lineKey:'lab_rough',base:'rr',opts:ROUGH_O,secs:[['ra','Return Air',ROUGH_RA],['du','Ducted R/A & S/A',ROUGH_DU],['vc1','Vents & Exhaust',ROUGH_VL],['vc2','Vents, HRV & Extras',ROUGH_VR]]},
@@ -802,7 +808,7 @@ function tabMaster(j){const m=j.master;
   const f=m.fields||{};const C=masterCols(m);
   const colHtml=rows=>rows.map(r=>r.h?`<div class="pv-dsh">${esc(r.h)}</div>`:`<div class="pv-dr"><span>${esc(r.k)}</span><b>${esc(r.v)}</b></div>`).join('')||'<div class="muted small" style="padding:8px">—</div>';
   return `<section class="panel stack"><div class="flex between"><div><h2>Master from the drawing</h2><span class="small muted">${(m.items||[]).length} lines read by Claude${m.builtAt?' on '+esc(m.builtAt):''}</span></div>${handoffBtn('measure','Open in Measure sheet')}</div>
-   <p class="small muted">This fills your Measure sheet. Check it there, then save the Master and send it to the supplier the usual way. Masters you save teach the next drawing read.</p>
+   ${m.savedId?`<div class="notice">Saved to your Masters as <b>${esc(m.savedKey||m.savedId)}</b>. It opens in a new tab; check it there and send it to the supplier the usual way. Your corrections teach the next drawing read.</div>`:m.saving?'<div class="notice">Saving to your Masters…</div>':'<div class="notice warn">Not in your Masters yet. It saves when you open it.</div>'}
    ${(m.flags||[]).length?`<details><summary>Claude's notes on this Master (${m.flags.length})</summary><ul class="small">${m.flags.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></details>`:''}
    <div class="sheet"><div class="sheet-hd"><b>ECO AIR</b><span>MEASURE SHEET</span><span>${esc(f.fdate||today())}</span></div>
     <div class="sheet-info">${[['Master #',f.fmaster],['Builder',f.fname],['Site',f.fsite],['Lot #',f.flot],['Model',f.fmodel],['Furnace',f.ffurnace],['AC',f.fac],['Job',j.address],['Lines',(m.items||[]).length]].map(([k,v])=>`<div><span>${k}</span><b>${esc(v||'—')}</b></div>`).join('')}</div>
@@ -838,10 +844,10 @@ function drawingLearn(){const rows=S.jobs.filter(j=>j.master?.final||j.wo?.final
 
 /* ---------- hand-off to the portal's own builders ---------- */
 function inPortal(){try{return window.parent!==window&&typeof window.parent.eaOpenPrefilled==='function'}catch(e){return false}}
-function handoffBtn(kind,label,warn){return inPortal()?`<button class="btn ${warn?'':'primary'}" data-act="handoff" data-k="${kind}">${label}</button>`:`<span class="small muted">Open the estimator from the portal to use your builders</span>`}
+function handoffBtn(kind,label,warn){return inPortal()?`<button class="btn ${warn?'':'primary'}" data-act="handoff" data-k="${kind}" title="Opens in a new tab">${label} ↗</button>`:`<span class="small muted">Open the estimator from the portal to use your builders</span>`}
 function estimateLines(j){const groups={};(j.lines||[]).filter(l=>l.include&&lineSell(l)!=null).forEach(l=>{const g=l.grp||'other';(groups[g]=groups[g]||[]).push(l)});
   return GRP_ORDER.filter(g=>groups[g]).map((g,n)=>{const ls=groups[g];const sell=ls.reduce((a,l)=>a+(lineSell(l)||0),0);
-    const d=ls.length===1&&!['labour','design'].includes(g)?ls[0].desc:GRP[g];return{id:'ai'+n,d,q:1,p:Math.round(sell),opt:g==='humid'||g==='tankless',g,ls}})}
+    const d=ls.length===1&&!['labour','design'].includes(g)?clientDesc(ls[0]):GRP[g];return{id:'ai'+n,d,q:1,p:Math.round(sell),opt:g==='humid'||g==='tankless',g,ls}})}
 function clientDesc(l){const by={lab_rough:'Rough-in installation: ductwork, risers, returns, exhaust and dryer venting',lab_base:'Basement installation: trunks, supply and return runs, plenum and drop',lab_tiein:'Equipment set and tie-in',lab_startup:'Startup, commissioning and balancing'};
   return by[l.key]||String(l.desc||'').replace(/\s*\(see Master\)/i,'').replace(/,\s*trunks per drawing/i,', trunks per drawing').trim()}
 function estimateForm(j){const L=estimateLines(j);const d=new Date(),v=new Date(Date.now()+90*864e5),iso=x=>x.toISOString().slice(0,10);
@@ -856,11 +862,24 @@ function woSnapshot(j,t){const w=j.wo||{},f=w.fields||{},c=woCalc(j,t);const row
     fnotes:(w.notes?.[t]||'')||'Counts filled by the AI estimator from the drawing — check before saving.',rows,opts:(w[t]?.opts)||[],hours:[]}}
 function flushSaves(){const ps=[];Object.keys(saveTimers).forEach(id=>{if(!dirty.has(id))return;clearTimeout(saveTimers[id]);const job=S.jobs.find(x=>x.id===id);if(!job||!S.db)return;const data=JSON.parse(JSON.stringify(job));delete data.id;data._kind='est_job';data._jobId=job.id;
   ps.push(chain('jobs/'+id,()=>S.db.collection('meta').doc('est_job_'+id).set(data)).then(()=>dirty.delete(id)).catch(()=>{}))});return Promise.all(ps)}
-async function handoff(kind){const j=curJob();if(!j||!inPortal())return;const title=j.address||'from drawing';let payload;
+function portalURL(hash){try{const l=window.parent.location;return l.origin+l.pathname+'#'+hash}catch(e){return null}}
+function newTab(url){const w=url?window.open(url,'_blank'):null;if(!w)toast('Your browser blocked the new tab. Allow pop-ups for the portal and try again.');return w}
+async function autoSaveMaster(j){if(!j||!j.master||!(j.master.items||[]).length||j.master.savedId)return j?.master?.savedId?{ok:true,id:j.master.savedId,key:j.master.savedKey}:null;
+  let P=null;try{P=window.parent}catch(e){}if(!P||P===window||typeof P.eaAutoSaveMaster!=='function')return null;
+  const fd=masterPayload(j);const aiRead={readAt:new Date().toISOString(),model:'claude-opus-5-5',file:String(j.source||'').replace(/^Read from /,'').replace(/ · .*$/,''),sheets:j.master.sheets||[],flags:j.master.flags||[],items:JSON.parse(JSON.stringify(fd.items)),via:'AI estimator'};
+  j.master.saving=true;S.forceRender=true;render();
+  let r=null;try{r=await P.eaAutoSaveMaster(fd,aiRead)}catch(e){r={ok:false,reason:e.message||String(e)}}
+  j.master.saving=false;if(r&&r.ok){j.master.savedId=r.id;j.master.savedKey=r.key;j.master.fields.fmaster=r.key;toast('Master saved to your Masters: '+r.key)}else toast('Master not saved — '+((r&&r.reason)||'open the estimator from the portal'));
+  saveJob(j);S.forceRender=true;render();return r&&r.ok?r:null}
+async function handoff(kind){const j=curJob();if(!j||!inPortal())return;const title=j.address||'from drawing';
+  if(kind==='measure'){if(j.master?.savedId){newTab(portalURL('open-master='+encodeURIComponent(j.master.savedId)));return}
+    const w=newTab('about:blank');const r=await autoSaveMaster(j);if(w){if(r)w.location.href=portalURL('open-master='+encodeURIComponent(r.id));else w.close()}return}
+  let payload;
   if(kind==='estimate')payload={title,form:estimateForm(j)};
-  else if(kind==='measure')payload={title,master:masterPayload(j)};
   else if(kind==='wo-rough'||kind==='wo-bsmt'){const t=kind.slice(3);payload={title:WO_DATA[t].label+' · '+title,snapshot:woSnapshot(j,t)};kind='workorder'}
-  toast('Saving and opening…');await flushSaves();window.parent.eaOpenPrefilled(kind,JSON.parse(JSON.stringify(payload)))}
+  const key=Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+  try{localStorage.setItem('ea_handoff_'+key,JSON.stringify({kind,payload,at:Date.now()}))}catch(e){toast('Could not open it: browser storage is turned off');return}
+  newTab(portalURL('handoff='+key))}
 
 /* ---------- actions ---------- */
 function setPath(obj,path,val){const ks=path.split('.');let o=obj;ks.slice(0,-1).forEach(k=>{if(o[k]==null||typeof o[k]!=='object')o[k]={};o=o[k]});o[ks[ks.length-1]]=val}
@@ -881,6 +900,7 @@ const ACT={
  wofinal:()=>{const j=curJob();['rough','bsmt'].forEach(t=>{if(j.wo[t])j.wo[t].ai={}});j.wo.final=true;syncWOLines(j);commit(j);toast('Work orders marked final — the next drawing read learns from them')},
  woblank:()=>{const j=curJob();j.wo={tier:'standard',veh:S.defVeh??3.5,fields:{model:j.master?.fields?.fmodel||''},notes:{},flags:[],rough:{rows:{},opts:[],ai:{}},bsmt:{rows:{},opts:[],ai:{}}};S.woAll={rough:true,bsmt:true};commit(j)},
  exportdata:()=>exportData(),
+ showact:()=>{S.showActuals=true;S.forceRender=true;render()},
  handoff:b=>handoff(b.dataset.k),
  view:b=>{S.view=b.dataset.v;if(S.view==='new'&&S.busy?.error)S.busy=null;S.forceRender=true;render();window.scrollTo(0,0)},
  tab:b=>{S.tab=b.dataset.v;S.forceRender=true;render()},
@@ -902,7 +922,7 @@ const ACT={
  confirmrate:b=>{const k=b.dataset.k;S.rates[k]={...S.rates[k],confirmed:true,src:(S.rates[k]?.src||'')};saveRates();S.forceRender=true;render()},
  userate:b=>{const k=b.dataset.k;S.rates[k]={v:+b.dataset.v,confirmed:false,src:`Average of finished jobs · ${today()}`};saveRates();S.forceRender=true;render();toast('Rate updated — confirm it when you are happy')},
  confirmitem:b=>{const it=S.items.find(i=>i.id===b.dataset.id);if(it){it.confirmed=true;it.date=it.date||today();saveItem(it);S.forceRender=true;render()}},
- blankjob:()=>{const j=newJob({project:{},floors:[{name:'Basement',supply:0,returns:0,fans:0},{name:'Main floor',supply:0,returns:0,fans:0},{name:'Second floor',supply:0,returns:0,fans:0}],zones:1,furnace:{},ac:{},gasAppliances:['Furnace']},'new','Typed takeoff');S.jobs.push(j);S.jobId=j.id;S.view='job';S.tab='overview';saveJob(j);S.forceRender=true;render()},
+ blankjob:()=>{const j=newJob({project:{},floors:[{name:'Basement',supply:0,returns:0,fans:0},{name:'Main floor',supply:0,returns:0,fans:0},{name:'Second floor',supply:0,returns:0,fans:0}],zones:1,furnace:{},ac:{},gasAppliances:['Furnace']},'new','Typed takeoff');S.jobs.push(j);S.jobId=j.id;S.view='job';S.tab='estimate';saveJob(j);S.forceRender=true;render()},
  dupjob:()=>{const j=curJob();const c=JSON.parse(JSON.stringify(j));c.id='j-'+Date.now().toString(36)+'-'+uid().slice(0,4);c.address=j.address+' (copy)';c.status='draft';c.actuals={};c.createdAt=new Date().toISOString();S.jobs.push(c);S.jobId=c.id;saveJob(c);S.forceRender=true;render()},
  deljob:()=>{S.confirmDelete=S.jobId;S.forceRender=true;render()},
  'deljob-no':()=>{S.confirmDelete=null;S.forceRender=true;render()},
@@ -929,7 +949,7 @@ const CH={
  wotier:el=>{const j=curJob();j.wo.tier=el.value;syncWOLines(j);commit(j)},
  woveh:el=>{const j=curJob();j.wo.veh=num(el.value)??3.5;syncWOLines(j);commit(j)},
  importfile:el=>{if(el.files?.[0])importData(el.files[0])},
- pickjob:el=>{if(el.value){S.jobId=el.value;S.view='job';S.tab='overview';S.forceRender=true;render()}},
+ pickjob:el=>{if(el.value){S.jobId=el.value;S.view='job';S.tab='estimate';S.forceRender=true;render()}},
  jobf:el=>{const j=curJob();j[el.dataset.f]=el.value;commit(j,{rebuildTodos:false})},
  jobtype:el=>{const j=curJob();j.settings.jobType=el.value;rebuild(j);commit(j,{rebuildTodos:false});toast('Rates switched to '+(el.value==='retrofit'?'retrofit':'new build')+' — estimate rebuilt')},
  tk:el=>{const j=curJob();const p=el.dataset.p;let v=el.type==='number'?num(el.value):el.value.trim();if(p==='ventilator.type'&&!v){j.takeoff.ventilator=null}else{if(p.startsWith('ventilator.')&&!j.takeoff.ventilator)j.takeoff.ventilator={};setPath(j.takeoff,p,v)}commit(j)},
@@ -974,7 +994,7 @@ async function startRead(files){if(!S.ai){S.busy={error:'Reading drawings needs 
     if(job.wo){job.wo.fields.model=job.wo.fields.model||job.master?.fields?.fmodel||''}
     rebuild(job);S.images[job.id]=P;
     ['master','wo'].forEach(k=>{if(!out[k].ok)job.todos.push({id:'fail-'+k,text:`Claude could not build the ${k==='wo'?'work orders':'Master'} (${st.errs[k]}) — re-read the drawing from the ${k==='wo'?'Work orders':'Master'} tab`,sev:'high',done:false})});
-    S.jobs.push(job);S.jobId=job.id;S.view='job';S.tab='overview';S.busy=null;saveJob(job);S.forceRender=true;render();toast('Estimate, Master and work orders built — work through the to-dos')}
+    S.jobs.push(job);S.jobId=job.id;S.view='job';S.tab='estimate';S.busy=null;saveJob(job);S.forceRender=true;render();toast('Estimate built — saving the Master to your Masters…');autoSaveMaster(job)}
   catch(e){S.busy={error:'Could not read the drawing — '+aiErr(e)};S.forceRender=true;render()}}
 async function readMore(files){const j=curJob();if(!j)return;if(!S.ai){toast('Reading drawings needs you signed in to the portal');return}
   S.busy={more:true,msg:'Rendering sheets…'};S.forceRender=true;render();
@@ -982,7 +1002,7 @@ async function readMore(files){const j=curJob();if(!j)return;if(!S.ai){toast('Re
     const out=await runParts(P,j,['master','wo'],(k,v)=>{S.busy.msg=`${k==='wo'?'Work orders':'Master'} ${v==='done'?'done':'failed'}…`;S.forceRender=true;render()});
     if(out.master.ok){j.master=masterFromAI(out.master.d);const f=j.master.fields;f.ffurnace=f.ffurnace||j.takeoff?.furnace?.model||'';f.fac=f.fac||(j.takeoff?.ac?.tons?j.takeoff.ac.tons+' ton':'')}
     if(out.wo.ok)j.wo=woFromAI(out.wo.d,j.wo);
-    rebuild(j);saveJob(j);const bad=['master','wo'].filter(k=>!out[k].ok);
+    rebuild(j);saveJob(j);if(out.master.ok)autoSaveMaster(j);const bad=['master','wo'].filter(k=>!out[k].ok);
     S.busy=bad.length?{moreErr:bad.map(k=>`${k==='wo'?'Work orders':'Master'}: ${aiErr(out[k].e)}`).join(' · ')}:null;S.forceRender=true;render();if(!bad.length)toast('Master and work orders built')}
   catch(e){S.busy={moreErr:'Could not read the drawing — '+aiErr(e)};S.forceRender=true;render()}}
 async function save(filename,blob){try{const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=filename;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(u);a.remove()},4000);toast('Downloaded '+filename)}catch(e){toast('Download failed — '+(e.message||e))}}
@@ -1022,12 +1042,18 @@ document.addEventListener('dragleave',e=>{const d=e.target.closest&&e.target.clo
 document.addEventListener('drop',e=>{const d=e.target.closest&&e.target.closest('#drop');if(!d)return;e.preventDefault();d.classList.remove('over');const fs=[...(e.dataTransfer?.files||[])];if(fs.length)startRead(fs)});
 
 /* ---------- boot ---------- */
-function buildPending(){if(!(S.ready.items&&S.ready.rates&&S.ready.jobs!==undefined))return;S.jobs.forEach(j=>{if(j.status!=='history'&&j.takeoff&&!(j.lines||[]).length&&!j._building){j._building=true;rebuild(j);delete j._building;saveJob(j)}})}
+function buildPending(){S.jobs.forEach(ensureWONames);if(!(S.ready.items&&S.ready.rates&&S.ready.jobs!==undefined))return;S.jobs.forEach(j=>{if(j.status!=='history'&&j.takeoff&&!(j.lines||[]).length&&!j._building){j._building=true;rebuild(j);delete j._building;saveJob(j)}})}
 try{if(window.pdfjsLib)pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'}catch(e){}
 render();
 function applyPortalPrices(p){if(!p)return;try{
   if(p.rough_ra)ROUGH_RA=p.rough_ra;if(p.rough_du)ROUGH_DU=p.rough_du;if(p.rough_vl)ROUGH_VL=p.rough_vl;if(p.rough_vr)ROUGH_VR=p.rough_vr;if(p.rough_o)ROUGH_O=p.rough_o;
   if(p.bsmt_sa)BSMT_SA=p.bsmt_sa;if(p.bsmt_ra)BSMT_RA=p.bsmt_ra;if(p.bsmt_el)BSMT_EL=p.bsmt_el;if(p.bsmt_er)BSMT_ER=p.bsmt_er;if(p.bsmt_o)BSMT_O=p.bsmt_o;
+  // the same fix-ups the Work order builder makes to the price lists, so item positions line up exactly
+  const has=(l,n)=>l.some(x=>x.n===n);
+  if(p.rough_du&&!has(ROUGH_DU,'High Walls'))ROUGH_DU=ROUGH_DU.concat([{n:'High Walls',p:3.54}]);
+  if(p.rough_vl&&!has(ROUGH_VL,'Booster Fan'))ROUGH_VL=[ROUGH_VL[0],{n:'Booster Fan',p:32.97},{n:'Lint Trap',p:33.32},...ROUGH_VL.slice(1)];
+  if(p.bsmt_el&&!has(BSMT_EL,'Booster Fan'))BSMT_EL=[BSMT_EL[0],{n:'Booster Fan',p:32.97},{n:'Lint Trap',p:33.32},...BSMT_EL.slice(1)];
+  if(p.bsmt_o&&!BSMT_O.some(x=>x.id==='bo6'))BSMT_O=[BSMT_O[0],{id:'bo6',n:'Pre-Duct (Return Later)',s:'$71.30',fl:71.30},...BSMT_O.slice(1)];
   if(p.rates){['standard','custom'].forEach(k=>{if(p.rates[k]&&WO_TIERS[k])WO_TIERS[k]={...WO_TIERS[k],rr:+p.rates[k].rr||WO_TIERS[k].rr,rb:+p.rates[k].rb||WO_TIERS[k].rb}})}
   if(p.vehPct!=null)S.defVeh=parseFloat(p.vehPct)||3.5;
   WO_DATA.rough.secs=[['ra','Return Air',ROUGH_RA],['du','Ducted R/A & S/A',ROUGH_DU],['vc1','Vents & Exhaust',ROUGH_VL],['vc2','Vents, HRV & Extras',ROUGH_VR]];WO_DATA.rough.opts=ROUGH_O;

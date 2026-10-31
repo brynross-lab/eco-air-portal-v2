@@ -99,7 +99,42 @@ function closeTool(){App.pop();}
 
 /* AI Estimator (beta). Hidden: it's in no menu. Admins open it by adding #estimator to the portal URL. */
 function openEstimator(){if(!isAdm()){showToast('The estimator is for admins only.',true);return;}openToolCore('estimator','AI Estimator (beta)');}
-function checkEstimatorHash(){if(String(location.hash).toLowerCase()==='#estimator'&&CURRENT_USER)openEstimator();}
+/* Links from the estimator open in a new tab:
+ *   #estimator            open the estimator
+ *   #handoff=<key>        open a builder pre-filled from a payload the estimator left in this browser
+ *   #open-master=<id>     open a saved Master in the Measure sheet */
+function clearEstimatorHash(){try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}}
+function checkEstimatorHash(){
+  var hs=String(location.hash||'');if(!CURRENT_USER||!hs)return;
+  if(hs.toLowerCase()==='#estimator'){openEstimator();return;}
+  var m=hs.match(/^#handoff=([a-z0-9]+)$/i);
+  if(m){var k='ea_handoff_'+m[1],raw=null;try{raw=localStorage.getItem(k);localStorage.removeItem(k);}catch(e){}
+    clearEstimatorHash();
+    if(!raw){showToast('That link has expired. Open it again from the estimator.',true);return;}
+    try{var d=JSON.parse(raw);window.eaOpenPrefilled(d.kind,d.payload);}catch(e){showToast('Could not open that builder.',true);}
+    return;}
+  m=hs.match(/^#open-master=(.+)$/);
+  if(m){var id=decodeURIComponent(m[1]),t0=Date.now();clearEstimatorHash();
+    (function wait(){var ms=D.masters.find(function(x){return x.id===id&&!x._deleted;});
+      if(ms){editMasterTemplate(ms);return;}
+      if(Date.now()-t0>15000){showToast('Could not find that Master yet. Try again in a moment.',true);return;}
+      setTimeout(wait,400);})();}
+}
+/* Saves the Master the estimator read from a drawing into Masters, exactly like saving it from the
+ * Measure sheet, with the AI's original read kept so your corrections teach the Plan Reader.
+ * Never replaces an existing Master: a clashing number gets " (2)", " (3)"… */
+window.eaAutoSaveMaster=async function(fd,aiRead){
+  if(READ_ONLY)return {ok:false,reason:'saving is off in this preview'};
+  fd=JSON.parse(JSON.stringify(fd||{}));var f=fd.fields=fd.fields||{};
+  var base=String(f.fmaster||f.fmodel||'').trim()||('AI '+todayISO()),mk=base,n=2;
+  while(D.masters.some(function(x){return x.id===masterSlot(mk,f).id&&!x._deleted;}))mk=base+' ('+(n++)+')';
+  f.fmaster=mk;
+  var tw=null;try{tw=toolFrame()&&toolFrame().contentWindow;}catch(e){}
+  var prevEd=_measureEditing,prevRead=tw?tw.__aiRead:undefined;
+  _measureEditing=null;if(tw)tw.__aiRead=aiRead||null;
+  try{await saveMeasureToFirestore(mk,f,fd);}finally{_measureEditing=prevEd;if(tw)tw.__aiRead=prevRead;}
+  return {ok:true,key:mk,id:masterSlot(mk,f).id};
+};
 window.addEventListener('hashchange',checkEstimatorHash);
 /* The estimator hands its drawing read to the real builders: it closes, and the builder opens pre-filled.
  * Nothing is saved until you save in the builder, same as starting one by hand. */

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Eco Air — AI Estimator</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@600;700;800&display=swap">
 <style>
 /* Layout: contractor job sheet — brand bar, job header with live totals, tabbed working sheet; price book is its own view */
 :root{
@@ -19,18 +19,8 @@
   --font-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --font-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
 }
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#0f1512; --surface:#16201a; --surface2:#1d2a22; --line:#2d3b32; --fg:#e3ebe5; --muted:#99a99e;
-  --brand:#1f5f39; --brand-ink:#ffffff; --brand-soft:#1d3527; --accent:#74d095;
-  --est-bg:#3a2f0e; --est-fg:#f4cf6a; --est-line:#7d621d;
-  --miss-bg:#3e1913; --miss-fg:#f2a294; --miss-line:#7d3428;
-  --ok-bg:#15351f; --ok-fg:#80d99b; --info-bg:#172839; --info-fg:#93bae4; color-scheme:dark}}
-:root[data-theme="dark"]{
-  --bg:#0f1512; --surface:#16201a; --surface2:#1d2a22; --line:#2d3b32; --fg:#e3ebe5; --muted:#99a99e;
-  --brand:#1f5f39; --brand-ink:#ffffff; --brand-soft:#1d3527; --accent:#74d095;
-  --est-bg:#3a2f0e; --est-fg:#f4cf6a; --est-line:#7d621d;
-  --miss-bg:#3e1913; --miss-fg:#f2a294; --miss-line:#7d3428;
-  --ok-bg:#15351f; --ok-fg:#80d99b; --info-bg:#172839; --info-fg:#93bae4; color-scheme:dark}
+
+
 *{box-sizing:border-box}
 html,body{margin:0}body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:14px;line-height:1.45}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--brand)}
@@ -157,6 +147,48 @@ details summary{cursor:pointer;font-weight:600}
 .step.fail .dot{background:var(--miss-fg)}
 
 .flagline{font-size:13px;padding:4px 0}
+
+/* ── Eco Air Portal v2 look (same tokens and type as styles.css / v2-skin.css) ── */
+:root{--bg:#EEF1EF;--surface:#FFFFFF;--surface2:#F3F6F4;--line:#D3DAD6;--fg:#17221D;--muted:#5C6963;
+  --brand:#1b5e38;--brand-ink:#FFFFFF;--brand-soft:#E3EFE7;--accent:#1b5e38;--accent-dark:#033824;
+  --est-bg:#FFF1CC;--est-fg:#8A5B00;--est-line:#EBD38E;--miss-bg:#FBE4E4;--miss-fg:#A12F2F;--miss-line:#EBB4B4;
+  --ok-bg:#DFF1E6;--ok-fg:#1F6B3F;--info-bg:#E1ECF7;--info-fg:#24527F;
+  --font-display:"Barlow Semi Condensed",Barlow,system-ui,sans-serif;--font-body:Barlow,system-ui,-apple-system,"Segoe UI",sans-serif;--font-mono:Barlow,system-ui,sans-serif;color-scheme:light}
+body{font-size:15px;line-height:1.4}
+h1,h2{font-weight:700;letter-spacing:.005em}h1{font-size:28px}h2{font-size:20px}
+h3{font-family:var(--font-body);font-size:13px;font-weight:600;letter-spacing:.04em}
+/* the portal sheet already shows the title, so the top bar is a light action bar */
+body::before{background:var(--surface)}
+header.top{background:var(--surface);color:var(--fg);border-bottom:1px solid var(--line)}
+header.top .wrap{min-height:56px;padding-block:8px}
+.logo,.logo-sub{display:none}
+.top select{background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;max-width:320px}
+.btn,.top .btn{background:var(--surface);color:var(--accent);border:0;box-shadow:inset 0 0 0 1.5px var(--line);border-radius:8px;padding:9px 14px;font-size:15px;font-weight:600;line-height:1.2}
+.btn:hover,.top .btn:hover{background:var(--surface2)}
+.btn.primary,.top .btn.solid{background:var(--accent);color:#fff;box-shadow:none}
+.btn.primary:hover,.top .btn.solid:hover{background:var(--accent-dark)}
+.btn.small{padding:6px 10px;font-size:14px;border-radius:6px}
+.panel{border-radius:10px;border-color:var(--line)}
+.field label{font-size:14px;font-weight:500;text-transform:none;letter-spacing:0;color:var(--muted)}
+input,select,textarea{border-radius:8px;padding:8px 10px;font-size:15px;border-color:var(--line)}
+.stats{gap:10px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.stat .k{font-size:14px;font-weight:500;text-transform:none;letter-spacing:0}
+.stat .v{font-family:var(--font-display);font-size:24px}
+.tabs{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:3px;gap:2px}
+.tab{border:0;border-radius:7px;margin:0;padding:8px 12px;font-size:15px;color:var(--muted)}
+.tab[aria-selected=true]{background:var(--accent);color:#fff}
+.tab .count{background:var(--est-bg);color:var(--est-fg);font-family:var(--font-body);font-weight:600;font-size:12px}
+.tab[aria-selected=true] .count{background:rgba(255,255,255,.22);color:#fff}
+.chip{font-size:13px;font-weight:600;border-radius:99px;padding:2px 10px;text-transform:none;letter-spacing:0;border:0!important}
+th{font-size:13px;text-transform:none;letter-spacing:0;font-weight:600}
+.sec td{background:var(--surface2);text-transform:none;letter-spacing:0;font-size:13px}
+.todo .tag{text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:500}
+.drop{background:var(--surface);border:2px dashed #C9D2CC;border-radius:10px}
+.notice{border-radius:8px;font-size:14px}
+.toast{background:var(--fg);color:#fff;border-radius:8px;font-size:14px}
+.opt{border-radius:8px}
+.src{font-size:12.5px}
 </style>
 </head>
 <body>

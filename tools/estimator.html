@@ -297,12 +297,17 @@ const lineStatus=l=>l.unitCost==null?'missing':(l.status||'estimated');
 function totals(job){let cost=0,sell=0,est=0,miss=0;(job.lines||[]).forEach(l=>{if(!l.include)return;const st=lineStatus(l);if(st==='missing')miss++;else if(st==='estimated')est++;const c=lineCost(l);if(c!=null){cost+=c;sell+=lineSell(l)}});const hst=rv('hst')??13;return{cost,sell,est,miss,margin:sell?(sell-cost)/sell:0,hst:sell*hst/100,total:sell*(1+hst/100)}}
 
 /* ---------- persistence ---------- */
+// The estimator runs inside the portal and writes through the portal's database connection. Firestore
+// only accepts plain objects made in its own window, so every write is copied into the portal window first.
+function W(o){try{if(S.db&&window.parent!==window&&S.db===window.parent.DB)return window.parent.JSON.parse(JSON.stringify(o))}catch(e){}return JSON.parse(JSON.stringify(o))}
+const MERGE=()=>W({merge:true});
 function chain(path,fn){const p=(writeChains[path]||Promise.resolve()).then(fn,fn);writeChains[path]=p.catch(()=>{});return p}
 function saveJob(job){if(!job)return;job.updatedAt=new Date().toISOString();dirty.add(job.id);clearTimeout(saveTimers[job.id]);
   saveTimers[job.id]=setTimeout(()=>{if(!S.db){dirty.delete(job.id);return}const data=JSON.parse(JSON.stringify(job));delete data.id;data._kind='est_job';data._jobId=job.id;data._by=portalUser()?.username||'';
-    chain('jobs/'+job.id,()=>S.db.collection('meta').doc('est_job_'+job.id).set(data)).then(()=>dirty.delete(job.id)).catch(e=>{dirty.delete(job.id);toast(e?.code==='quota_exceeded'?'Storage is full — delete old jobs to save':'Could not save the job — '+(e?.message||'try again'))})},700)}
-function saveRates(){if(!S.db)return;const data={rates:JSON.parse(JSON.stringify(S.rates))};chain('settings/rates',()=>S.db.collection('meta').doc('est_rates').set(data)).catch(()=>toast('Could not save rates'))}
-function saveItem(it){if(!S.db)return Promise.resolve();const data=JSON.parse(JSON.stringify(it));delete data.id;return chain('pricebook',()=>S.db.collection('meta').doc('est_pricebook').set({items:{[it.id]:data}},{merge:true})).catch(()=>toast('Could not save price book item'))}
+    chain('jobs/'+job.id,()=>S.db.collection('meta').doc('est_job_'+job.id).set(W(data))).then(()=>dirty.delete(job.id)).catch(e=>{dirty.delete(job.id);toast(e?.code==='quota_exceeded'?'Storage is full — delete old jobs to save':'Could not save the job — '+(e?.message||'try again'))})},700)}
+function saveFailed(e,what){console.error('[Estimator] save failed',what,e);toast('Could not save '+what+' — '+(e&&e.message||e))}
+function saveRates(){if(!S.db)return;const data={rates:JSON.parse(JSON.stringify(S.rates))};chain('settings/rates',()=>S.db.collection('meta').doc('est_rates').set(W(data))).catch(()=>toast('Could not save rates'))}
+function saveItem(it){if(!S.db)return Promise.resolve();const data=JSON.parse(JSON.stringify(it));delete data.id;return chain('pricebook',()=>S.db.collection('meta').doc('est_pricebook').set(W({items:{[it.id]:data}}),MERGE())).catch(()=>toast('Could not save price book item'))}
 function recordItemCost(itemId,cost,source){const it=S.items.find(i=>i.id===itemId);if(!it)return;
   if(it.cost!=null&&it.cost!==cost){it.history=[...(it.history||[]),{cost:it.cost,date:it.date||null,source:it.source||''}].slice(-25)}
   it.cost=cost;it.confirmed=true;it.source=source;it.date=today();saveItem(it)}
@@ -892,7 +897,7 @@ async function ensureSupplierQuotes(){if(S._quotesDone||!S.db||!S.ready.items)re
     if(!cur){add[id]={sku:q.sku,desc:q.desc,kind:q.kind,attrs:q.attrs,cost:q.cost,confirmed:true,source:q.src,date:q.date,history:[]};return}
     if(cur.cost==null||(cur.date&&cur.date<q.date&&cur.cost!==q.cost)){const h=cur.cost!=null?[...(cur.history||[]),{cost:cur.cost,date:cur.date||null,source:cur.source||''}].slice(-25):(cur.history||[]);add[cur.id]={...cur,cost:q.cost,confirmed:true,source:q.src,date:q.date,history:h};delete add[cur.id].id}});
   if(!Object.keys(add).length)return;
-  try{await chain('pricebook',()=>S.db.collection('meta').doc('est_pricebook').set({items:add},{merge:true}));toast(`Added ${Object.keys(add).length} prices from your Armstrong and Vanee quotes`)}catch(e){S._quotesDone=false}}
+  try{await chain('pricebook',()=>S.db.collection('meta').doc('est_pricebook').set(W({items:add}),MERGE()));toast(`Added ${Object.keys(add).length} prices from your Armstrong and Vanee quotes`)}catch(e){S._quotesDone=false;saveFailed(e,'the supplier prices')}}
 // Read a supplier quote PDF into the price book with Claude
 const QUOTE_PROMPT=`This is a supplier quote for an Ontario HVAC contractor. List every product line with its unit price.
 Return ONLY JSON: {"supplier":str|null,"quoteNo":str|null,"date":"YYYY-MM-DD"|null,"items":[{"sku":str,"desc":str,"kind":"furnace"|"ac"|"ventilator"|"thermostat"|"water-heater"|"humidifier"|"zoning"|"fan"|"material"|"other","cost":num,"btu":num|null,"series":"2-stage ECM"|"2-stage variable speed"|"modulating"|"single stage"|null,"type":"ERV"|"HRV"|null,"cfm":num|null,"tons":num|null}]}
@@ -906,7 +911,7 @@ async function importQuote(file){if(!S.ai){toast('Reading quotes needs you signe
       if(cur){const h=cur.cost!=null&&cur.cost!==+q.cost?[...(cur.history||[]),{cost:cur.cost,date:cur.date||null,source:cur.source||''}].slice(-25):(cur.history||[]);const x={...cur,attrs,cost:+q.cost,confirmed:true,source:src,date,history:h};delete x.id;add[cur.id]=x;u++}
       else{add[id]={sku:q.sku,desc:q.desc||'',kind:q.kind||'other',attrs,cost:+q.cost,confirmed:true,source:src,date,history:[]};n++}});
     if(!n&&!u)throw new Error('No priced items found in that quote');
-    await chain('pricebook',()=>S.db.collection('meta').doc('est_pricebook').set({items:add},{merge:true}));S._rebuilt={};S.busy=null;toast(`${src}: ${n} new, ${u} updated`)}
+    await chain('pricebook',()=>S.db.collection('meta').doc('est_pricebook').set(W({items:add}),MERGE()));S._rebuilt={};S.busy=null;toast(`${src}: ${n} new, ${u} updated`)}
   catch(e){S.busy=null;toast('Could not read that quote — '+aiErr(e))}S.forceRender=true;render()}
 
 
@@ -954,7 +959,7 @@ function woSnapshot(j,t){const w=j.wo||{},f=w.fields||{},c=woCalc(j,t);const row
   return{type:t,tier:w.tier||'standard',fi:f.installer||'',fd:f.date||today(),fb:j.master?.fields?.fname||j.client||'',fp:j.master?.fields?.fsite||j.address||'',fl:f.lot||'',funit:f.unit||'',fblock:f.block||'',fla:'',fm:f.model||'',fwo:f.wo||'',
     fnotes:(w.notes?.[t]||'')||'Counts filled by the AI estimator from the drawing — check before saving.',rows,opts:(w[t]?.opts)||[],hours:[]}}
 function flushSaves(){const ps=[];Object.keys(saveTimers).forEach(id=>{if(!dirty.has(id))return;clearTimeout(saveTimers[id]);const job=S.jobs.find(x=>x.id===id);if(!job||!S.db)return;const data=JSON.parse(JSON.stringify(job));delete data.id;data._kind='est_job';data._jobId=job.id;
-  ps.push(chain('jobs/'+id,()=>S.db.collection('meta').doc('est_job_'+id).set(data)).then(()=>dirty.delete(id)).catch(()=>{}))});return Promise.all(ps)}
+  ps.push(chain('jobs/'+id,()=>S.db.collection('meta').doc('est_job_'+id).set(W(data))).then(()=>dirty.delete(id)).catch(()=>{}))});return Promise.all(ps)}
 function portalURL(hash){try{const l=window.parent.location;return l.origin+l.pathname+'#'+hash}catch(e){return null}}
 function newTab(url){const w=url?window.open(url,'_blank'):null;if(!w)toast('Your browser blocked the new tab. Allow pop-ups for the portal and try again.');return w}
 async function autoSaveMaster(j){if(!j||!j.master||!(j.master.items||[]).length||j.master.savedId)return j?.master?.savedId?{ok:true,id:j.master.savedId,key:j.master.savedKey}:null;
@@ -1171,8 +1176,8 @@ const DEFAULT_RATES=(()=>{const R=(v,src)=>({v,confirmed:false,src});return{meta
 async function seedIfEmpty(db){const r=await db.collection('meta').doc('est_rates').get();S.needsImport=!r.exists}
 async function importData(file){if(!S.db){toast('Not connected to the database');return}let d;try{d=JSON.parse(await file.text())}catch(e){toast('That file is not an estimator data file');return}
   if(!d||!d.rates||!d.items||!d.jobs){toast('That file is missing rates, price book or jobs');return}
-  try{const db=S.db,b=db.batch();b.set(db.collection('meta').doc('est_rates'),{rates:d.rates,_importedAt:new Date().toISOString()});b.set(db.collection('meta').doc('est_pricebook'),{items:d.items});
-    Object.entries(d.jobs).forEach(([id,j])=>b.set(db.collection('meta').doc('est_job_'+id),{...j,_kind:'est_job',_jobId:id}));await b.commit();S.needsImport=false;S.forceRender=true;render();toast(`Loaded ${Object.keys(d.items).length} prices and ${Object.keys(d.jobs).length} jobs`)}
+  try{const db=S.db,b=db.batch();b.set(db.collection('meta').doc('est_rates'),W({rates:d.rates,_importedAt:new Date().toISOString()}));b.set(db.collection('meta').doc('est_pricebook'),W({items:d.items}));
+    Object.entries(d.jobs).forEach(([id,j])=>b.set(db.collection('meta').doc('est_job_'+id),W({...j,_kind:'est_job',_jobId:id})));await b.commit();S.needsImport=false;S.forceRender=true;render();toast(`Loaded ${Object.keys(d.items).length} prices and ${Object.keys(d.jobs).length} jobs`)}
   catch(e){toast(e&&e.code==='read-only'?'Saving is off in this preview':'Import failed — '+(e.message||e))}}
 function exportData(){const items={};S.items.forEach(({id,...v})=>items[id]=v);const jobs={};S.jobs.forEach(({id,...v})=>jobs[id]=v);
   save(`estimator-backup-${today()}.json`,new Blob([JSON.stringify({rates:S.rates,items,jobs},null,1)],{type:'application/json'}))}

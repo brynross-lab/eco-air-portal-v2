@@ -49,6 +49,7 @@ function boot(){
   TAB='home';renderScreen();
   loadAll();
   if(typeof preloadTools==='function')preloadTools();
+  if(typeof checkEstimatorHash==='function')setTimeout(checkEstimatorHash,300);
 }
 App.logout = function(){
   _subs.forEach(function(u){try{u();}catch(e){}});_subs=[];

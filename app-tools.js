@@ -101,6 +101,22 @@ function closeTool(){App.pop();}
 function openEstimator(){if(!isAdm()){showToast('The estimator is for admins only.',true);return;}openToolCore('estimator','AI Estimator (beta)');}
 function checkEstimatorHash(){if(String(location.hash).toLowerCase()==='#estimator'&&CURRENT_USER)openEstimator();}
 window.addEventListener('hashchange',checkEstimatorHash);
+/* The estimator hands its drawing read to the real builders: it closes, and the builder opens pre-filled.
+ * Nothing is saved until you save in the builder, same as starting one by hand. */
+window.eaOpenPrefilled=function(kind,payload){
+  var p=JSON.parse(JSON.stringify(payload||{})),title=p.title||'from drawing';
+  if(kind==='measure'){
+    openToolCore('measure','Measure sheet · '+title).then(function(){whenToolReady(function(){postToTool({type:'LOAD_MASTER',data:p.master});});});
+  }else if(kind==='workorder'){
+    openToolCore('workorder','Work order · '+title).then(function(){whenToolReady(function(){postToTool({type:'LOAD_WO',snapshot:p.snapshot,masterNum:'',woId:''});});});
+  }else if(kind==='estimate'){
+    openToolCore('estimate','Estimate · '+title).then(function(){whenToolReady(function(){
+      postToTool({type:'RESTORE_FORM',data:p.form});
+      // the builder restores its lists but only redraws the preview; redraw the edit lists too
+      setTimeout(function(){try{var w=toolFrame().contentWindow;if(w.renderScopeList)w.renderScopeList();if(w.renderLineList)w.renderLineList();if(w.calc)w.calc();if(w.render)w.render();}catch(e){}},350);
+    });});
+  }
+};
 
 /* entry points used across the app */
 function openNewWO(ctx){

@@ -73,12 +73,16 @@ SHEETS.newMenu = function(){
   var items=[
     ['wo','Work order','Start a work order for any builder and lot','App.pop();openNewWO()'],
     ['measure','Measure sheet','Take measurements and save a master','App.pop();openToolCore(\'measure\',\'Measure sheet\')'],
-    ['estimate','Estimate','Itemized estimate with taxes and upgrades','App.pop();openToolCore(\'estimate\',\'Estimate\')'],
+    isAdm()
+      ?['estimate','Estimate','AI estimate from a heating drawing: Master, work orders, pricing','App.pop();openEstimator()']
+      :['estimate','Estimate','Itemized estimate with taxes and upgrades','App.pop();openToolCore(\'estimate\',\'Estimate\')'],
     ['invoice','Invoice','Bill work orders that are ready to invoice','App.pop();App.openInvoice()']
   ];
   if(isAdm()){
     items.push(['job','Job','Track a lead or project in the pipeline','App.pop();App.editJob()']);
     items.push(['upload','Site map','Upload a site plan and mark the lots','App.pop();App.uploadMap()']);
+    // the original itemized estimate builder, kept for admins while the AI estimator is in beta
+    items.push(['estimate','Classic estimate','Itemized estimate with taxes and upgrades','App.pop();openToolCore(\'estimate\',\'Estimate\')']);
   }
   return {title:'New',plain:true,body:'<div class="menu">'+items.map(function(i){return '<button onclick="'+i[3]+'"><i>'+svg(i[0])+'</i><div>'+i[1]+'<span>'+i[2]+'</span></div></button>';}).join('')+'</div>'};
 };

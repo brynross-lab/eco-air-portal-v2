@@ -294,7 +294,7 @@ function generateLines(job){const t=job.takeoff||{},st=job.settings||{},L=[];con
 function rebuild(job){const old=Object.fromEntries((job.lines||[]).map(l=>[l.key,l]));const fresh=generateLines(job);
   const keep=(job.lines||[]).filter(l=>l.key.startsWith('m-'));
   job.lines=fresh.map(l=>{const o=old[l.key];if(!o)return l;const base={...l,include:o.include,mk:o.mk,sourcing:o.sourcing,supplier:o.supplier};
-    if(o.touched&&!l.fromWO&&!o.fromWO&&(o.itemId||null)===(l.itemId||null))return{...base,qty:o.qty,unitCost:o.unitCost,status:o.status,touched:true,src:o.src};
+    if(o.touched&&(o.woOverride||(!l.fromWO&&!o.fromWO))&&(o.itemId||null)===(l.itemId||null))return{...base,qty:o.qty,unitCost:o.unitCost,status:o.status,touched:true,src:o.src};
     return base}).concat(keep);
   job.todos=mergeTodos(job);job.materials=mergeMaterials(job);return job}
 
@@ -522,7 +522,7 @@ function tabEstimate(j){const lines=j.lines||[];const T=totals(j);
   const rows=lines.map((l,i)=>{const st=lineStatus(l),c=lineCost(l),s=lineSell(l);return `<tr class="${l.include?st:'excluded'}">
    <td><input type="checkbox" aria-label="Include" data-ch="line" data-i="${i}" data-f="include" ${l.include?'checked':''}></td>
    <td style="min-width:240px"><input id="ld-${i}" data-ch="line" data-i="${i}" data-f="desc" value="${esc(l.desc)}" style="width:100%"><div class="src">${esc(l.src||'')}</div></td>
-   ${l.fromWO?`<td class="r num">1<div class="src">WO</div></td><td class="r num">${money2(l.unitCost)}<div><button class="btn small" data-act="tab" data-v="wo">Edit WO</button></div></td>`:`<td class="r"><input id="lq-${i}" class="qty" type="number" step="any" data-ch="line" data-i="${i}" data-f="qty" value="${l.qty??''}"><div class="src">${esc(l.unit||'')}</div></td>
+   ${l.fromWO?`<td class="r num">1<div class="src">WO</div></td><td class="r"><input id="lu-${i}" type="number" step="any" data-ch="line" data-i="${i}" data-f="unitCost" value="${l.unitCost??''}"><div><button class="btn small" data-act="tab" data-v="wo">See WO</button></div></td>`:`<td class="r"><input id="lq-${i}" class="qty" type="number" step="any" data-ch="line" data-i="${i}" data-f="qty" value="${l.qty??''}"><div class="src">${esc(l.unit||'')}</div></td>
    <td class="r"><input id="lu-${i}" type="number" step="any" data-ch="line" data-i="${i}" data-f="unitCost" value="${l.unitCost??''}" placeholder="price"></td>`}
    <td class="r num">${money(c)}</td>
    <td class="r"><input id="lm-${i}" class="qty" type="number" step="any" data-ch="line" data-i="${i}" data-f="mk" value="${lineMk(l)}" title="${l.mk==null?'Default markup for '+l.cat:'Custom markup'}"></td>
@@ -534,14 +534,11 @@ function tabEstimate(j){const lines=j.lines||[];const T=totals(j);
    <p class="small muted">Type a cost and it counts as confirmed. Equipment prices you type are saved to the price book with the date. Changes to rate-based lines are logged so the rates can learn.</p>
    <div class="scroll"><table><thead><tr><th></th><th>Item</th><th class="r">Qty</th><th class="r">Unit cost</th><th class="r">Cost</th><th class="r">Markup %</th><th class="r">Sell</th><th>Status</th></tr></thead><tbody>${rows}</tbody>
    <tfoot><tr><td></td><td><button class="btn small" data-act="addline">+ Add line</button></td><td></td><td></td><td class="r num"><b>${money(T.cost)}</b></td><td class="r num">${T.sell?Math.round(T.margin*100)+'% margin':''}</td><td class="r num"><b>${money(T.sell)}</b></td><td></td></tr></tfoot></table></div></section>
-  <section class="client"><div class="band"><b>ESTIMATE</b><span>${esc(j.estNo?'#'+j.estNo+' · ':'')}${new Date().toLocaleDateString('en-CA',{year:'numeric',month:'long',day:'numeric'})}</span></div>
-   <div class="body"><div><b>${esc(j.address)}</b>${j.city?', '+esc(j.city):''}${j.client?`<div class="muted">${esc(j.client)}</div>`:''}</div>
-   <div class="grid2" style="gap:12px"><div><h3>Scope of work</h3>${GRP_ORDER.filter(g=>groups[g]).map(g=>`<div style="margin-top:6px"><b>${GRP[g]}</b><ul class="small">${groups[g].map(l=>`<li>${esc(l.desc)}</li>`).join('')}</ul></div>`).join('')}</div>
-    <div><h3>Price</h3><table><tbody>${GRP_ORDER.filter(g=>groups[g]).map(g=>`<tr><td>${GRP[g]}</td><td class="r num">${money(groups[g].reduce((a,l)=>a+(lineSell(l)||0),0))}</td></tr>`).join('')}</tbody></table>
-    <table class="totals" style="margin-top:8px"><tr><td>Subtotal</td><td class="r num">${money2(T.sell)}</td></tr><tr><td>HST (${hst}%)</td><td class="r num">${money2(T.hst)}</td></tr><tr class="grand"><td>Total</td><td class="r num">${money2(T.total)}</td></tr></table>
-    <h3 style="margin-top:12px">Payment schedule</h3><table class="small">${pay.map(([p,w])=>`<tr><td>${p}% ${w}</td><td class="r num">${money2(T.total*p/100)}</td></tr>`).join('')}</table></div></div>
-   ${T.miss?`<div class="notice bad">${T.miss} line${T.miss>1?'s have':' has'} no price yet and ${T.miss>1?'are':'is'} not in the total.</div>`:''}
-   <div class="flex"><button class="btn primary" data-act="pdf" ${S.downloads?'':'disabled'}>Download estimate PDF</button></div></div></section>`}
+  <section class="panel stack"><div class="flex between"><h2>Estimate for the client</h2>${handoffBtn('estimate','Open in Estimate builder',T.miss>0)}</div>
+   <p class="small muted">Fills your Estimate builder with these sections and prices (sell, before HST). Save and send it from there, the same as always. Add-ons like the tankless and humidifier go in as optional lines.</p>
+   ${T.miss?`<div class="notice bad">${T.miss} line${T.miss>1?'s have':' has'} no price yet and won't be on the estimate until you add one above.</div>`:''}
+   <div class="scroll"><table><tbody>${estimateLines(j).map(l=>`<tr class="${l.opt?'excluded':''}"><td>${esc(l.d)}${l.opt?' <span class="chip info">Optional</span>':''}</td><td class="r num">${money2(l.p)}</td></tr>`).join('')}</tbody>
+   <tfoot><tr><td><b>Subtotal</b></td><td class="r num"><b>${money2(T.sell-estimateLines(j).filter(l=>l.opt).reduce((a,l)=>a+l.p,0))}</b></td></tr></tfoot></table></div></section>`}
 
 function tabMaterials(j){const M=j.materials||[];let sec='';
   return `<section class="panel stack"><div class="flex between"><h2>Other materials</h2><div class="flex"><button class="btn small" data-act="rebuildmat">Rebuild list</button><button class="btn small" data-act="copymat">Copy for supplier</button><button class="btn small primary" data-act="csvmat" ${S.downloads?'':'disabled'}>Download CSV</button></div></div>
@@ -578,7 +575,7 @@ function viewNew(){const b=S.busy;
      <div class="step ${b.phase==='render'?'on':'done'}"><span class="dot"></span><span>${b.phase==='render'?esc(b.msg||'Rendering drawing sheets'):'Drawing sheets ready'}</span></div>
      ${Object.entries(lab).map(([k,l])=>{const v=b.parts[k];return `<div class="step ${b.phase!=='ai'?'':v==='wait'?'on':v==='done'?'done':'fail'}"><span class="dot"></span><span>${l}${v==='fail'?` — <span class="small">${esc(b.errs[k]||'failed')}</span>`:''}</span></div>`}).join('')}
     </div><p class="small muted">Claude reads the drawing three ways at once. Bigger drawing sets take a minute or two.</p></section>`}
-  return `${banner()}<section class="stack"><label class="drop" id="drop" for="planfile"><h1>Drop the heating plan here</h1><span class="muted">PDF from the designer, or photos/screenshots of each sheet</span>
+  return `${banner()}${importPanel()}<section class="stack"><label class="drop" id="drop" for="planfile"><h1>Drop the heating plan here</h1><span class="muted">PDF from the designer, or photos/screenshots of each sheet</span>
    <span class="btn primary">Choose file</span><input id="planfile" type="file" accept="application/pdf,image/png,image/jpeg,image/webp" multiple hidden data-ch="planfile"></label>
    ${b?.error?`<div class="notice bad">${esc(b.error)}</div>`:''}
    ${S.ai?'':`<div class="notice warn">Reading drawings needs you signed in to the portal. You can still start a job and type the takeoff.</div>`}
@@ -715,7 +712,7 @@ function woCalc(j,t){const W=j.wo||{},D=WO_DATA[t],tier=woTier(j),s=W[t]||{};let
 function woLine(j,t){const D=WO_DATA[t],c=woCalc(j,t),tier=woTier(j);
   return mkLine({key:D.lineKey,grp:'labour',cat:'labour',desc:t==='rough'?'Rough-in labour — per Rough-In work order':'Basement labour — per Basement work order',qty:1,unit:'WO',unitCost:c.tot,fromWO:t,status:c.aiOpen?'estimated':'confirmed',
     src:`${D.label} WO · union piece rates May 1 2026 · ${tier.label} tier · ${c.runs} runs${c.aiOpen?` · ${c.aiOpen} AI quantities not checked`:''}`})}
-function syncWOLines(j){['rough','bsmt'].forEach(t=>{if(!woHas(j,t))return;const D=WO_DATA[t];const i=(j.lines||[]).findIndex(l=>l.key===D.lineKey);const nl=woLine(j,t);
+function syncWOLines(j){['rough','bsmt'].forEach(t=>{if(!woHas(j,t))return;const D=WO_DATA[t];const i=(j.lines||[]).findIndex(l=>l.key===D.lineKey);if(i>=0&&j.lines[i].woOverride)return;const nl=woLine(j,t);
   if(i>=0){nl.include=j.lines[i].include;nl.mk=j.lines[i].mk;j.lines[i]=nl}else j.lines.push(nl)})}
 function woText(j){const f=j.wo?.fields||{};let s='';['rough','bsmt'].forEach(t=>{if(!woHas(j,t))return;const c=woCalc(j,t);
   s+=`WORK ORDER — ${WO_DATA[t].label.toUpperCase()}\n${j.address}${j.lot||f.lot?' · Lot '+(f.lot||''):''} · Model ${f.model||'—'} · Installer ${f.installer||'—'}\n`;
@@ -769,53 +766,35 @@ function woFromAI(d,prev){const wo={tier:prev?.tier||'standard',veh:prev?.veh??(
   if(miss.length)wo.flags.push('Claude used item names not on the rate list (left out): '+miss.join(', '));wo.aiOriginal={rough:JSON.parse(JSON.stringify(wo.rough)),bsmt:JSON.parse(JSON.stringify(wo.bsmt))};return wo}
 
 function tabMaster(j){const m=j.master;
-  if(!m)return `<section class="panel empty"><h2>No Master yet</h2><p class="muted" style="max-width:52ch">The Master is the sheet metal measure for the supplier, written the way your portal's Measure Tool writes it. Claude builds it from the heating drawing.</p>${readMoreBtn(j)}</section>`;
-  const f=m.fields||{};const open=(m.items||[]).filter(i=>i.ai&&!i.checked).length;const C=masterCols(m);
-  const rowsFor=(cont,types)=>(m.items||[]).map((it,idx)=>({it,idx})).filter(x=>x.it.container===cont||(!x.it.container&&types.includes(x.it.type)));
-  const editor=M_SECS.map(([cont,label,types])=>{const rs=rowsFor(cont,types);return `<tr class="sec"><td colspan="4">${label} <span class="muted">(${rs.length})</span></td></tr>`+
-    rs.map(({it,idx})=>`<tr class="${it.ai&&!it.checked?'estimated':''}"><td class="small">${M_TYPE_LABEL[it.type]||it.type}</td><td><div class="flex" style="gap:4px">${(M_FIELDS[it.type]||[]).map(([k,lab,opts])=>opts?`<select id="mi-${it.id}-${k}" data-ch="mitem" data-id="${it.id}" data-f="${k}" aria-label="${lab}">${['',...opts].map(o=>`<option ${it[k]===o?'selected':''}>${esc(o)}</option>`).join('')}</select>`:`<input id="mi-${it.id}-${k}" data-ch="mitem" data-id="${it.id}" data-f="${k}" value="${esc(it[k]||'')}" placeholder="${lab}" title="${lab}" style="width:${k==='v2'&&it.type==='extra'?120:62}px">`).join('')}</div></td>
-     <td class="r"><input id="mi-${it.id}-qty" class="qty" type="number" data-ch="mitem" data-id="${it.id}" data-f="qty" value="${esc(it.qty)}" aria-label="Qty"></td>
-     <td>${it.ai&&!it.checked?`<button class="btn small" data-act="mcheck" data-id="${it.id}">Looks right</button>`:statusChip('confirmed','Checked')} <button class="btn small" data-act="mdel" data-id="${it.id}" aria-label="Remove">✕</button></td></tr>`).join('')+
-    `<tr><td colspan="4"><span class="flex">${types.map(t=>`<button class="btn small" data-act="madd" data-c="${cont}" data-t="${t}">+ ${M_TYPE_LABEL[t]}</button>`).join('')}</span></td></tr>`}).join('');
+  if(!m)return `<section class="panel empty"><h2>No Master yet</h2><p class="muted" style="max-width:52ch">Claude reads the drawing the way your Measure sheet's AI Plan Reader does, then fills your Measure sheet with it.</p>${readMoreBtn(j)}</section>`;
+  const f=m.fields||{};const C=masterCols(m);
   const colHtml=rows=>rows.map(r=>r.h?`<div class="pv-dsh">${esc(r.h)}</div>`:`<div class="pv-dr"><span>${esc(r.k)}</span><b>${esc(r.v)}</b></div>`).join('')||'<div class="muted small" style="padding:8px">—</div>';
-  return `<div class="grid2"><section class="panel stack"><div class="flex between"><h2>Master</h2><div class="flex">${open?`<button class="btn small" data-act="mcheckall">Mark all ${open} checked</button>`:m.final?statusChip('confirmed','Final — used for learning'):`<button class="btn small primary" data-act="mfinal">Mark Master final</button>`}</div></div>
-   <p class="small muted">Amber rows came from Claude and haven't been checked. Editing a row marks it checked. Final Masters teach the next drawing read.</p>
-   <div class="kv">${[['fmaster','Master #'],['fname','Builder'],['fsite','Site'],['flot','Lot #'],['fmodel','Model'],['ffurnace','Furnace'],['fac','AC'],['fdate','Date measured']].map(([k,l])=>`<div class="field"><label for="mf-${k}">${l}</label><input id="mf-${k}" data-ch="mfield" data-f="${k}" value="${esc(f[k]||'')}"></div>`).join('')}</div>
-   ${(m.flags||[]).length?`<details open><summary>Claude's notes on this Master (${m.flags.length})</summary><ul class="small">${m.flags.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></details>`:''}
-   <div class="scroll"><table><tbody>${editor}</tbody></table></div>${readMoreBtn(j,'Re-read drawing for Master & WOs')}</section>
-  <section class="stack"><div class="flex"><button class="btn primary" data-act="mpdf" ${S.downloads?'':'disabled'}>Download Master PDF</button><button class="btn" data-act="mcopy">Copy for supplier email</button><button class="btn" data-act="mcsv" ${S.downloads?'':'disabled'}>CSV</button></div>
+  return `<section class="panel stack"><div class="flex between"><div><h2>Master from the drawing</h2><span class="small muted">${(m.items||[]).length} lines read by Claude${m.builtAt?' on '+esc(m.builtAt):''}</span></div>${handoffBtn('measure','Open in Measure sheet')}</div>
+   <p class="small muted">This fills your Measure sheet. Check it there, then save the Master and send it to the supplier the usual way. Masters you save teach the next drawing read.</p>
+   ${(m.flags||[]).length?`<details><summary>Claude's notes on this Master (${m.flags.length})</summary><ul class="small">${m.flags.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></details>`:''}
    <div class="sheet"><div class="sheet-hd"><b>ECO AIR</b><span>MEASURE SHEET</span><span>${esc(f.fdate||today())}</span></div>
-    <div class="sheet-info">${[['Master #',f.fmaster],['Builder',f.fname],['Site',f.fsite],['Lot #',f.flot],['Model',f.fmodel],['Furnace',f.ffurnace],['AC',f.fac],['Job',j.address],['Items',(m.items||[]).length]].map(([k,v])=>`<div><span>${k}</span><b>${esc(v||'—')}</b></div>`).join('')}</div>
-    <div class="sheet-grid"><div><div class="pv-ch">FITTINGS</div>${C.fits.map(x=>`<div class="pv-fit ${x.ai?'ai':''}"><b>${esc(x.name)}</b><span class="q ${x.qty>1?'many':''}">×${x.qty}</span>${x.lines.map(l=>`<div>${esc(l)}</div>`).join('')}</div>`).join('')||'<div class="muted small" style="padding:8px">No fittings</div>'}</div>
-     <div><div class="pv-ch">DUCT</div>${colHtml(C.duct)}</div><div><div class="pv-ch">BLOCK ENDS</div>${colHtml(C.blk)}</div><div><div class="pv-ch">JOIST LINING</div>${colHtml(C.rgt)}</div></div>
-    <div class="sheet-ft"><b>(289) 259-7939</b> • service@ecoair.to • www.ecoair.to</div></div></section></div>`}
-
+    <div class="sheet-info">${[['Master #',f.fmaster],['Builder',f.fname],['Site',f.fsite],['Lot #',f.flot],['Model',f.fmodel],['Furnace',f.ffurnace],['AC',f.fac],['Job',j.address],['Lines',(m.items||[]).length]].map(([k,v])=>`<div><span>${k}</span><b>${esc(v||'—')}</b></div>`).join('')}</div>
+    <div class="sheet-grid"><div><div class="pv-ch">FITTINGS</div>${C.fits.map(x=>`<div class="pv-fit"><b>${esc(x.name)}</b><span class="q ${x.qty>1?'many':''}">×${x.qty}</span>${x.lines.map(l=>`<div>${esc(l)}</div>`).join('')}</div>`).join('')||'<div class="muted small" style="padding:8px">No fittings</div>'}</div>
+     <div><div class="pv-ch">DUCT</div>${colHtml(C.duct)}</div><div><div class="pv-ch">BLOCK ENDS</div>${colHtml(C.blk)}</div><div><div class="pv-ch">JOIST LINING</div>${colHtml(C.rgt)}</div></div></div>
+   ${readMoreBtn(j,'Re-read drawing')}</section>`}
 function readMoreBtn(j,label){return `<label class="btn ${label?'small':'primary'}" for="readmore-${j.id}" style="justify-self:start">${label||'Read drawing to build Master & work orders'}<input id="readmore-${j.id}" type="file" accept="application/pdf,image/png,image/jpeg,image/webp" multiple hidden data-ch="readmore"></label>${S.busy?.more?`<p class="small muted">${esc(S.busy.msg||'Working…')}</p>`:''}${S.busy?.moreErr?`<div class="notice bad">${esc(S.busy.moreErr)}</div>`:''}`}
 
-function woCard(j,t){const D=WO_DATA[t],c=woCalc(j,t),s=j.wo?.[t]||{},tier=woTier(j);const showAll=S.woAll?.[t];
-  const qmap={};c.items.forEach(x=>{if(x.sid!=null)qmap[x.sid+':'+x.i]=x.qty});const secs=D.secs.map(([sid,name,list])=>{const rows=list.map((it,i)=>({it,i,q:qmap[sid+':'+i]||0})).filter(x=>showAll||x.q);if(!rows.length)return'';
-    return `<tr class="sec"><td colspan="4">${esc(name)}</td></tr>`+rows.map(({it,i,q})=>{const p=it.r?tier[D.base]:it.p;const ai=s.ai?.[sid+':'+i];return `<tr class="${ai?'estimated':''}"><td>${esc(it.n)}</td><td class="r"><input id="wq-${t}-${sid}-${i}" class="qty" type="number" min="0" data-ch="woq" data-t="${t}" data-s="${sid}" data-i="${i}" value="${q||''}" placeholder="0"></td><td class="r num small">${money2(p)}</td><td class="r num">${q?money2(q*p):''}</td></tr>`}).join('')}).join('');
-  const opts=D.opts.map(o=>{const on=(s.opts||[]).includes(o.id);const ai=s.ai?.['opt:'+o.id];return `<label class="opt ${on?'on':''} ${ai?'ai':''}"><input type="checkbox" data-ch="woopt" data-t="${t}" data-id="${o.id}" ${on?'checked':''}> ${esc(o.n)} <span class="muted small">${esc(o.s)}</span></label>`}).join('');
-  return `<section class="panel stack wo"><div class="flex between"><div><h2>${D.label} work order</h2><span class="small muted">${c.runs} runs · ${tier.label} tier</span></div><div class="flex">${c.aiOpen?`<button class="btn small" data-act="wocheck" data-t="${t}">Mark ${c.aiOpen} checked</button>`:c.items.length?statusChip('confirmed','Checked'):''}<button class="btn small" data-act="woall" data-t="${t}">${showAll?'Hide unused items':'Show all items'}</button><button class="btn small primary" data-act="wopdf" data-t="${t}" ${S.downloads?'':'disabled'}>PDF</button></div></div>
-   <div class="scroll"><table><thead><tr><th>Item</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead><tbody>${secs||`<tr><td colspan="4" class="muted">No items yet — tap “Show all items” to count by hand.</td></tr>`}</tbody></table></div>
-   <div class="opts">${opts}</div>
-   <div class="field"><label for="won-${t}">Notes on this work order</label><textarea id="won-${t}" rows="2" data-ch="wonote" data-t="${t}">${esc(j.wo?.notes?.[t]||'')}</textarea></div>
-   <table class="totals" style="max-width:300px;margin-left:auto"><tr><td>Subtotal</td><td class="r num">${money2(c.base)}</td></tr>${c.pct?`<tr><td>${esc(c.pctLabel)}</td><td class="r num">${money2(c.pct)}</td></tr>`:''}<tr><td>Vehicle allow. (${(j.wo?.veh??3.5).toFixed(1)}%)</td><td class="r num">${money2(c.veh)}</td></tr><tr class="grand"><td>Lot total</td><td class="r num">${money2(c.tot)}</td></tr></table></section>`}
-
+function woCard(j,t){const D=WO_DATA[t],c=woCalc(j,t),tier=woTier(j);
+  return `<section class="panel stack"><div class="flex between"><div><h2>${D.label}</h2><span class="small muted">${c.runs} runs · ${tier.label} tier · lot total ${money2(c.tot)}</span></div>${c.items.length?handoffBtn('wo-'+t,'Open in Work order builder'):''}</div>
+   ${c.items.length?`<div class="scroll"><table><thead><tr><th>Item</th><th class="r">Qty</th><th class="r">Amount</th></tr></thead><tbody>${c.items.map(x=>`<tr><td>${esc(x.name)}</td><td class="r num">${x.qty}</td><td class="r num">${money2(x.amt)}</td></tr>`).join('')}</tbody>
+   <tfoot>${c.pct?`<tr><td colspan="2">${esc(c.pctLabel)}</td><td class="r num">${money2(c.pct)}</td></tr>`:''}<tr><td colspan="2">Vehicle allow. (${(j.wo?.veh??3.5).toFixed(1)}%)</td><td class="r num">${money2(c.veh)}</td></tr><tr><td colspan="2"><b>Lot total</b></td><td class="r num"><b>${money2(c.tot)}</b></td></tr></tfoot></table></div>`:'<p class="muted small">Claude found nothing for this work order.</p>'}</section>`}
 function tabWO(j){const w=j.wo;const f=w?.fields||{};const lh=rv('lab_hour');const hr=(j.lines||[]).map((l,i)=>({l,i})).filter(x=>x.l.key==='lab_tiein'||x.l.key==='lab_startup');
-  if(!w)return `<section class="panel empty"><h2>No work orders yet</h2><p class="muted" style="max-width:52ch">Claude counts the Rough-In and Basement work orders from the drawing using your union piece rates. The work order totals become the labour cost on the estimate.</p>${readMoreBtn(j)}<button class="btn small" data-act="woblank">Start blank work orders</button></section>`;
-  return `<section class="panel stack"><div class="flex between"><h2>Work orders</h2><div class="flex"><button class="btn small" data-act="copywo">Copy all</button>${w.final?statusChip('confirmed','Final — used for learning'):`<button class="btn small" data-act="wofinal">Mark work orders final</button>`}</div></div>
-   <p class="small muted">Amber quantities came from Claude. Rough-In and Basement lot totals feed the labour lines on the estimate; hourly lines cover tie-in and startup.</p>
+  if(!w)return `<section class="panel empty"><h2>No work orders yet</h2><p class="muted" style="max-width:52ch">Claude counts the Rough-In and Basement work orders from the drawing, the way your Work order builder's AI Plan Reader does, and fills the builder with them. The lot totals become the labour cost on this estimate.</p>${readMoreBtn(j)}</section>`;
+  return `<section class="panel stack"><h2>Work orders from the drawing</h2>
+   <p class="small muted">Each one opens in your Work order builder with Claude's counts filled in, priced on your current union rates. Check and save it there. The lot totals here set the labour on the cost sheet; to change labour for the estimate, edit the labour line on the cost sheet.</p>
    <div class="row flex">${[['installer','Installer'],['date','Date'],['wo','WO #'],['lot','Lot #'],['block','Block #'],['unit','Unit #'],['model','Model']].map(([k,l])=>`<div class="field"><label for="wf-${k}">${l}</label><input id="wf-${k}" ${k==='date'?'type="date"':''} data-ch="wofield" data-f="${k}" value="${esc(f[k]||'')}" style="width:${k==='installer'||k==='model'?150:100}px"></div>`).join('')}
-    <div class="field"><label for="wf-tier">Rate tier</label><select id="wf-tier" data-ch="wotier">${Object.entries(WO_TIERS).map(([k,v])=>`<option value="${k}" ${w.tier===k?'selected':''}>${v.label} (${money2(v.rr)} / ${money2(v.rb)})</option>`).join('')}</select></div>
-    <div class="field"><label for="wf-veh">Vehicle %</label><input id="wf-veh" type="number" step="0.1" data-ch="woveh" value="${w.veh??3.5}" style="width:70px"></div></div>
+    <div class="field"><label for="wf-tier">Rate tier</label><select id="wf-tier" data-ch="wotier">${Object.entries(WO_TIERS).map(([k,v])=>`<option value="${k}" ${w.tier===k?'selected':''}>${v.label} (${money2(v.rr)} / ${money2(v.rb)})</option>`).join('')}</select></div></div>
    ${(w.flags||[]).length?`<details><summary>Claude's notes on the work orders (${w.flags.length})</summary><ul class="small">${w.flags.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></details>`:''}</section>
   <div class="grid2">${woCard(j,'rough')}${woCard(j,'bsmt')}</div>
-  <section class="panel stack"><div class="flex between"><h2>Hourly work order</h2><button class="btn small primary" data-act="wopdf" data-t="hour" ${S.downloads?'':'disabled'}>PDF</button></div>
+  <section class="panel stack"><h2>Tie-in & startup (hourly)</h2>
    <div class="scroll"><table><thead><tr><th>Work</th><th class="r">Hours</th><th class="r">Rate /hr</th><th class="r">Amount</th></tr></thead><tbody>
    ${hr.map(({l,i})=>`<tr class="${l.include?lineStatus(l):'excluded'}"><td><input id="hd-${i}" data-ch="line" data-i="${i}" data-f="desc" value="${esc(l.desc)}" style="width:100%"></td><td class="r"><input id="hq-${i}" class="qty" type="number" step="0.5" data-ch="line" data-i="${i}" data-f="qty" value="${l.qty??''}"></td><td class="r"><input id="hu-${i}" type="number" step="any" data-ch="line" data-i="${i}" data-f="unitCost" value="${l.unitCost??''}"></td><td class="r num">${money2(lineCost(l))}</td></tr>`).join('')}
-   </tbody></table></div>${lh&&!rc('lab_hour')?`<p class="small muted">Hourly rate ${money2(lh)} is a placeholder — set it in Price book & rates.</p>`:''}</section>`}
-
+   </tbody></table></div>${lh&&!rc('lab_hour')?`<p class="small muted">Hourly rate ${money2(lh)} is a placeholder — set it in Price book & rates.</p>`:''}${readMoreBtn(j,'Re-read drawing')}</section>`}
 
 function drawingLearn(){const rows=S.jobs.filter(j=>j.master?.final||j.wo?.final).map(j=>{let mc='—',wc='—';
    if(j.master?.final&&j.master.aiOriginal){const key=it=>[it.type,it.vType,it.v1,it.v2,it.v3,it.v4,it.v5].join('|');const a=Object.fromEntries(j.master.aiOriginal.map(it=>[key(it),+it.qty||1]));const f=j.master.items;
@@ -823,6 +802,33 @@ function drawingLearn(){const rows=S.jobs.filter(j=>j.master?.final||j.wo?.final
    if(j.wo?.final&&j.wo.aiOriginal){let tot=0,same=0;['rough','bsmt'].forEach(t=>{const o=j.wo.aiOriginal[t]?.rows||{},n=j.wo[t]?.rows||{};new Set([...Object.keys(o),...Object.keys(n)]).forEach(sid=>{const ks=new Set([...Object.keys(o[sid]||{}),...Object.keys(n[sid]||{})]);ks.forEach(i=>{tot++;if((o[sid]||{})[i]===(n[sid]||{})[i])same++})})});wc=`${same} of ${tot} quantities kept`}
    return `<tr><td>${esc(j.address)}</td><td class="small">${mc}</td><td class="small">${wc}</td></tr>`}).join('');
   return `<section class="panel stack"><h2>Drawing reads you've checked</h2><p class="small muted">When you mark a Master or work order final, Claude uses it as an example on the next drawing. This shows how much you had to change.</p>${rows?`<div class="scroll"><table><thead><tr><th>Job</th><th>Master</th><th>Work orders</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<p class="muted small">None yet — mark a Master or work order final on a job.</p>'}</section>`}
+
+
+/* ---------- hand-off to the portal's own builders ---------- */
+function inPortal(){try{return window.parent!==window&&typeof window.parent.eaOpenPrefilled==='function'}catch(e){return false}}
+function handoffBtn(kind,label,warn){return inPortal()?`<button class="btn ${warn?'':'primary'}" data-act="handoff" data-k="${kind}">${label}</button>`:`<span class="small muted">Open the estimator from the portal to use your builders</span>`}
+function estimateLines(j){const groups={};(j.lines||[]).filter(l=>l.include&&lineSell(l)!=null).forEach(l=>{const g=l.grp||'other';(groups[g]=groups[g]||[]).push(l)});
+  return GRP_ORDER.filter(g=>groups[g]).map((g,n)=>{const ls=groups[g];const sell=ls.reduce((a,l)=>a+(lineSell(l)||0),0);
+    const d=ls.length===1&&!['labour','design'].includes(g)?ls[0].desc:GRP[g];return{id:'ai'+n,d,q:1,p:Math.round(sell),opt:g==='humid'||g==='tankless',g,ls}})}
+function clientDesc(l){const by={lab_rough:'Rough-in installation: ductwork, risers, returns, exhaust and dryer venting',lab_base:'Basement installation: trunks, supply and return runs, plenum and drop',lab_tiein:'Equipment set and tie-in',lab_startup:'Startup, commissioning and balancing'};
+  return by[l.key]||String(l.desc||'').replace(/\s*\(see Master\)/i,'').replace(/,\s*trunks per drawing/i,', trunks per drawing').trim()}
+function estimateForm(j){const L=estimateLines(j);const d=new Date(),v=new Date(Date.now()+90*864e5),iso=x=>x.toISOString().slice(0,10);
+  const f={fmaster:j.master?.fields?.fmaster||'',fbuilder:j.master?.fields?.fname||'',fsite:j.master?.fields?.fsite||'',flot:j.wo?.fields?.lot||j.master?.fields?.flot||'',fdt:iso(d),fvl:iso(v),
+    fnm:j.client||'',fad:j.address||'',fcy:j.city||'',ftx:String(rv('hst')??13),
+    __lines:JSON.stringify(L.map(({id,d,q,p,opt})=>({id,d,q,p,opt}))),
+    __scopes:JSON.stringify(L.map((l,n)=>({id:'as'+n,t:GRP[l.g],d:l.ls.map(x=>'• '+clientDesc(x)).join('\n'),opt:l.opt})))};
+  if(j.estNo)f.fen=j.estNo;return f}
+function masterPayload(j){const m=j.master||{};return{fields:{...(m.fields||{}),fdate:m.fields?.fdate||today()},items:(m.items||[]).map(it=>({container:it.container,type:it.type,qty:String(it.qty||1),v1:it.v1||'',v2:it.v2||'',v3:it.v3||'',v4:it.v4||'',v5:it.v5||'',v6:'',vType:it.vType||''}))}}
+function woSnapshot(j,t){const w=j.wo||{},f=w.fields||{},c=woCalc(j,t);const rows={};c.items.forEach(x=>{if(x.sid==null)return;(rows[x.sid]=rows[x.sid]||{})[x.i]=x.qty});
+  return{type:t,tier:w.tier||'standard',fi:f.installer||'',fd:f.date||today(),fb:j.master?.fields?.fname||j.client||'',fp:j.master?.fields?.fsite||j.address||'',fl:f.lot||'',funit:f.unit||'',fblock:f.block||'',fla:'',fm:f.model||'',fwo:f.wo||'',
+    fnotes:(w.notes?.[t]||'')||'Counts filled by the AI estimator from the drawing — check before saving.',rows,opts:(w[t]?.opts)||[],hours:[]}}
+function flushSaves(){const ps=[];Object.keys(saveTimers).forEach(id=>{if(!dirty.has(id))return;clearTimeout(saveTimers[id]);const job=S.jobs.find(x=>x.id===id);if(!job||!S.db)return;const data=JSON.parse(JSON.stringify(job));delete data.id;data._kind='est_job';data._jobId=job.id;
+  ps.push(chain('jobs/'+id,()=>S.db.collection('meta').doc('est_job_'+id).set(data)).then(()=>dirty.delete(id)).catch(()=>{}))});return Promise.all(ps)}
+async function handoff(kind){const j=curJob();if(!j||!inPortal())return;const title=j.address||'from drawing';let payload;
+  if(kind==='estimate')payload={title,form:estimateForm(j)};
+  else if(kind==='measure')payload={title,master:masterPayload(j)};
+  else if(kind==='wo-rough'||kind==='wo-bsmt'){const t=kind.slice(3);payload={title:WO_DATA[t].label+' · '+title,snapshot:woSnapshot(j,t)};kind='workorder'}
+  toast('Saving and opening…');await flushSaves();window.parent.eaOpenPrefilled(kind,JSON.parse(JSON.stringify(payload)))}
 
 /* ---------- actions ---------- */
 function setPath(obj,path,val){const ks=path.split('.');let o=obj;ks.slice(0,-1).forEach(k=>{if(o[k]==null||typeof o[k]!=='object')o[k]={};o=o[k]});o[ks[ks.length-1]]=val}
@@ -843,6 +849,7 @@ const ACT={
  wofinal:()=>{const j=curJob();['rough','bsmt'].forEach(t=>{if(j.wo[t])j.wo[t].ai={}});j.wo.final=true;syncWOLines(j);commit(j);toast('Work orders marked final — the next drawing read learns from them')},
  woblank:()=>{const j=curJob();j.wo={tier:'standard',veh:S.defVeh??3.5,fields:{model:j.master?.fields?.fmodel||''},notes:{},flags:[],rough:{rows:{},opts:[],ai:{}},bsmt:{rows:{},opts:[],ai:{}}};S.woAll={rough:true,bsmt:true};commit(j)},
  exportdata:()=>exportData(),
+ handoff:b=>handoff(b.dataset.k),
  view:b=>{S.view=b.dataset.v;if(S.view==='new'&&S.busy?.error)S.busy=null;S.forceRender=true;render();window.scrollTo(0,0)},
  tab:b=>{S.tab=b.dataset.v;S.forceRender=true;render()},
  rebuild:()=>{const j=curJob();rebuild(j);commit(j,{rebuildTodos:false});toast('Estimate rebuilt from takeoff')},
@@ -908,7 +915,7 @@ const CH={
    else if(f==='mk'){const v=num(el.value);l.mk=(v===rv('mk_'+l.cat))?null:v}
    else{const v=num(el.value);const from=f==='unitCost'?l.unitCost:l.qty;if(v===from)return;
      if(f==='unitCost'&&v!=null&&from!=null&&!l.key.startsWith('m-'))(j.adjustments=j.adjustments||[]).push({key:l.key,field:f,from,to:v,at:today()});
-     l[f]=v;l.touched=true;if(v!=null&&(f==='unitCost'||lineStatus(l)!=='missing'))l.status='confirmed';
+     l[f]=v;l.touched=true;if(l.fromWO&&f==='unitCost'){l.woOverride=true;l.src='Your number (work order total was '+money2(from)+')'}if(v!=null&&(f==='unitCost'||lineStatus(l)!=='missing'))l.status='confirmed';
      if(f==='unitCost'&&l.itemId&&v!=null)recordItemCost(l.itemId,v,`Entered on ${j.address}`)}
    commit(j)},
  eqmodel:el=>{const j=curJob();const l=j.lines[+el.dataset.i];const it=S.items.find(i=>i.id===el.value);if(!it)return;
@@ -1001,6 +1008,7 @@ async function loadPortalExamples(db){try{const ms=await db.collection('saved_ma
   try{const ws=await db.collection('saved_workorder').limit(60).get();const out=[];ws.forEach(d=>{const x=d.data()||{};if(x._deleted)return;const sn=x.snapshot||{};const t=sn.type||x.type;if((t!=='rough'&&t!=='bsmt')||!sn.rows)return;
       out.push({type:t,rows:sn.rows,opts:sn.opts||[],num:x.num||x._key||d.id,model:sn.fm||'',builder:sn.fb||x.builder||'',at:x._savedAt||''})});out.sort((a,b)=>String(b.at).localeCompare(String(a.at)));S.portalWOs=out}catch(e){console.warn('[Estimator] WOs',e)}
   S.forceRender=true;render()}
+const DEFAULT_RATES=(()=>{const R=(v,src)=>({v,confirmed:false,src});return{metal_new:R(130,'Default from past new-build jobs'),metal_retro:R(225,'Default from past retrofit jobs'),lab_new:R(87,'Default from past new-build jobs'),lab_retro:R(185,'Default from past retrofit jobs'),rough_share:R(50,'Default'),lab_hour:R(75,'Placeholder'),tiein_hours:R(10,'Placeholder'),startup_hours:R(4,'Placeholder'),gas_point:R(750,'Default from past jobs'),fan_supply:R(250,'Default from past jobs'),fan_vent:R(133,'Default from past jobs'),dryer_vent:R(120,'Placeholder'),vent_install:R(500,'Placeholder'),zone_per:R(1100,'Default from past jobs'),design_fee:R(2000,'Default from past jobs'),mk_equipment:R(35,'Default'),mk_ductwork:R(45,'Default'),mk_labour:R(37,'Default'),mk_gas:R(28,'Default'),mk_fans:R(48,'Default'),mk_vent:R(34,'Default'),mk_zoning:R(0,'Default'),mk_addons:R(12,'Default'),mk_design:R(0,'Default'),hst:{v:13,confirmed:true,src:'Ontario HST'}}})();
 async function seedIfEmpty(db){const r=await db.collection('meta').doc('est_rates').get();S.needsImport=!r.exists}
 async function importData(file){if(!S.db){toast('Not connected to the database');return}let d;try{d=JSON.parse(await file.text())}catch(e){toast('That file is not an estimator data file');return}
   if(!d||!d.rates||!d.items||!d.jobs){toast('That file is missing rates, price book or jobs');return}
@@ -1017,7 +1025,7 @@ function startFirestore(cfg){if(_fbStarted)return;let db=parentDB();
   const timer=setTimeout(()=>{if(!S.ready.jobs){S.ready.jobs=true;S.forceRender=true;render();toast('Still loading saved jobs…')}},10000);
   const done=k=>{S.ready[k]=true;if(S.ready.jobs)clearTimeout(timer)};
   seedIfEmpty(db).catch(()=>{}).finally(()=>{
-    db.collection('meta').doc('est_rates').onSnapshot(s=>{S.rates=s.exists?(s.data().rates||{}):{};done('rates');buildPending();render()},()=>{done('rates');render()});
+    db.collection('meta').doc('est_rates').onSnapshot(s=>{S.rates=s.exists?(s.data().rates||{}):JSON.parse(JSON.stringify(DEFAULT_RATES));S.needsImport=!s.exists;done('rates');buildPending();render()},()=>{done('rates');render()});
     db.collection('meta').doc('est_pricebook').onSnapshot(s=>{const it=s.exists?(s.data().items||{}):{};S.items=Object.entries(it).map(([id,v])=>({id,...v}));done('items');buildPending();render()},()=>{done('items');render()});
     db.collection('meta').where('_kind','==','est_job').onSnapshot(s=>{const incoming=s.docs.map(d=>{const x=d.data();const id=x._jobId||d.id.replace(/^est_job_/,'');delete x._kind;delete x._jobId;delete x._by;return{id,...x}});const local=Object.fromEntries(S.jobs.map(j=>[j.id,j]));
       S.jobs=incoming.map(j=>dirty.has(j.id)&&local[j.id]?local[j.id]:j).concat(S.jobs.filter(j=>dirty.has(j.id)&&!incoming.some(x=>x.id===j.id)));

@@ -97,6 +97,11 @@ function toolBeforeClose(){
 }
 function closeTool(){App.pop();}
 
+/* AI Estimator (beta). Hidden: it's in no menu. Admins open it by adding #estimator to the portal URL. */
+function openEstimator(){if(!isAdm()){showToast('The estimator is for admins only.',true);return;}openToolCore('estimator','AI Estimator (beta)');}
+function checkEstimatorHash(){if(String(location.hash).toLowerCase()==='#estimator'&&CURRENT_USER)openEstimator();}
+window.addEventListener('hashchange',checkEstimatorHash);
+
 /* entry points used across the app */
 function openNewWO(ctx){
   openToolCore('workorder','Work order').then(function(){

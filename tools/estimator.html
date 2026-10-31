@@ -149,6 +149,9 @@ details summary{cursor:pointer;font-weight:600}
 .flagline{font-size:13px;padding:4px 0}
 
 
+/* real Measure sheet preview */
+.mprev-scroll{overflow-x:auto;background:#DDE3DF;border-radius:10px;padding:16px}
+.mprev{width:max-content;margin:0 auto}
 /* estimate tab: clean estimate left, to-dos right */
 .estgrid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:16px;align-items:start}
 @media (max-width:900px){.estgrid{grid-template-columns:minmax(0,1fr)}}
@@ -522,7 +525,7 @@ function renderTop(){const jobs=S.jobs.filter(j=>j.status!=='history').sort((a,b
 function render(){const a=document.activeElement;if(a&&a.closest&&a.closest('#app')&&/INPUT|TEXTAREA|SELECT/.test(a.tagName)&&!S.forceRender){S.pendingRender=true;return}
   S.forceRender=false;S.pendingRender=false;renderTop();const app=$('#app');
   if(!S.ready.jobs&&!S.offline){app.innerHTML=`<div class="panel empty"><h2>Loading jobs and price book…</h2></div>`;return}
-  if(S.view==='new')app.innerHTML=viewNew();else if(S.view==='book')app.innerHTML=viewBook();else{const j=curJob();app.innerHTML=j?viewJob(j)+previewOverlay():viewHome()}}
+  if(S.view==='new')app.innerHTML=viewNew();else if(S.view==='book')app.innerHTML=viewBook();else{const j=curJob();app.innerHTML=j?viewJob(j)+previewOverlay():viewHome()}if(S.view==='job'&&S.tab==='master')hydrateMasterPreview()}
 function banner(){let ro=false;try{ro=!!window.parent.READ_ONLY}catch(e){}return S.offline?`<div class="notice warn">Can't reach the portal database, so nothing will be saved. Open the estimator from inside the portal.</div>`:ro?`<div class="notice warn">The portal is in preview mode, so nothing will be saved.</div>`:''}
 function importPanel(){return S.needsImport?`<section class="panel stack"><div class="flex between"><div><h2>Optional: load your past jobs</h2><p class="muted small" style="max-width:62ch">Your Armstrong and Vanee prices are already in. The data file (estimator-data.json) adds Overdale, Rainsford and Flamboro and your AC and tankless estimates, so the rates learn from them.</p></div><label class="btn" for="importfile">Choose data file<input id="importfile" type="file" accept="application/json,.json" hidden data-ch="importfile"></label></div></section>`:''}
 function viewHome(){const jobs=S.jobs.filter(j=>j.status!=='history');return `${banner()}<div class="panel empty"><h1>Start from a heating plan</h1>
@@ -834,15 +837,13 @@ function woFromAI(d,prev){const wo={tier:prev?.tier||'standard',veh:prev?.veh??(
 
 function tabMaster(j){const m=j.master;
   if(!m)return `<section class="panel empty"><h2>No Master yet</h2><p class="muted" style="max-width:52ch">Claude reads the drawing the way your Measure sheet's AI Plan Reader does, then fills your Measure sheet with it.</p>${readMoreBtn(j)}</section>`;
-  const f=m.fields||{};const C=masterCols(m);
+  const f=m.fields||{};
   const colHtml=rows=>rows.map(r=>r.h?`<div class="pv-dsh">${esc(r.h)}</div>`:`<div class="pv-dr"><span>${esc(r.k)}</span><b>${esc(r.v)}</b></div>`).join('')||'<div class="muted small" style="padding:8px">—</div>';
   return `<section class="panel stack"><div class="flex between"><div><h2>Master from the drawing</h2><span class="small muted">${(m.items||[]).length} lines read by Claude${m.builtAt?' on '+esc(m.builtAt):''}</span></div>${handoffBtn('measure','Open in Measure sheet')}</div>
    ${m.savedId?`<div class="notice">Saved to your Masters as <b>${esc(m.savedKey||m.savedId)}</b>. It opens in a new tab; check it there and send it to the supplier the usual way. Your corrections teach the next drawing read.</div>`:m.saving?'<div class="notice">Saving to your Masters…</div>':'<div class="notice warn">Not in your Masters yet. It saves when you open it.</div>'}
    ${(m.flags||[]).length?`<details><summary>Claude's notes on this Master (${m.flags.length})</summary><ul class="small">${m.flags.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></details>`:''}
-   <div class="sheet"><div class="sheet-hd"><b>ECO AIR</b><span>MEASURE SHEET</span><span>${esc(f.fdate||today())}</span></div>
-    <div class="sheet-info">${[['Master #',f.fmaster],['Builder',f.fname],['Site',f.fsite],['Lot #',f.flot],['Model',f.fmodel],['Furnace',f.ffurnace],['AC',f.fac],['Job',j.address],['Lines',(m.items||[]).length]].map(([k,v])=>`<div><span>${k}</span><b>${esc(v||'—')}</b></div>`).join('')}</div>
-    <div class="sheet-grid"><div><div class="pv-ch">FITTINGS</div>${C.fits.map(x=>`<div class="pv-fit"><b>${esc(x.name)}</b><span class="q ${x.qty>1?'many':''}">×${x.qty}</span>${x.lines.map(l=>`<div>${esc(l)}</div>`).join('')}</div>`).join('')||'<div class="muted small" style="padding:8px">No fittings</div>'}</div>
-     <div><div class="pv-ch">DUCT</div>${colHtml(C.duct)}</div><div><div class="pv-ch">BLOCK ENDS</div>${colHtml(C.blk)}</div><div><div class="pv-ch">JOIST LINING</div>${colHtml(C.rgt)}</div></div></div>
+   <div class="flex"><button class="btn" data-act="mpdf2">Download Master PDF</button><span class="small muted">${m.savedId?'Showing the Master as saved in your Masters.':'Showing Claude\'s read.'}</span></div>
+   <div class="mprev-scroll"><div class="mprev" id="mprev">${S.mprev?.[j.id]?'':'<p class="muted small" style="padding:16px">Drawing the measure sheet…</p>'}</div></div>
    ${readMoreBtn(j,'Re-read drawing')}</section>`}
 function readMoreBtn(j,label){return `<label class="btn ${label?'small':'primary'}" for="readmore-${j.id}" style="justify-self:start">${label||'Read drawing to build Master & work orders'}<input id="readmore-${j.id}" type="file" accept="application/pdf,image/png,image/jpeg,image/webp" multiple hidden data-ch="readmore"></label>${S.busy?.more?`<p class="small muted">${esc(S.busy.msg||'Working…')}</p>`:''}${S.busy?.moreErr?`<div class="notice bad">${esc(S.busy.moreErr)}</div>`:''}`}
 
@@ -908,6 +909,32 @@ async function importQuote(file){if(!S.ai){toast('Reading quotes needs you signe
     await chain('pricebook',()=>S.db.collection('meta').doc('est_pricebook').set({items:add},{merge:true}));S._rebuilt={};S.busy=null;toast(`${src}: ${n} new, ${u} updated`)}
   catch(e){S.busy=null;toast('Could not read that quote — '+aiErr(e))}S.forceRender=true;render()}
 
+
+/* ---------- the portal's Measure sheet as renderer (same fitting pictures, layout and PDF) ---------- */
+function masterForSheet(j){const m=j.master||{};
+  try{const P=window.parent;const saved=m.savedId&&P.D&&P.D.masters&&P.D.masters.find(x=>x.id===m.savedId&&!x._deleted);
+    if(saved){const fd=(saved.snapshot&&saved.snapshot._formData)||saved.formData||saved.snapshot||saved;if(fd&&(fd.fields||fd.items))return JSON.parse(JSON.stringify(fd))}}catch(e){}
+  return masterPayload(j)}
+let _mtool=null;
+function measureTool(){if(_mtool)return _mtool;_mtool=(async()=>{let html=null;
+    try{if(window.parent.loadTool)html=await window.parent.loadTool('measure')}catch(e){}
+    if(!html){const r=await fetch(portalURL('').replace(/#$/,'').replace(/[^/]*$/,'')+'tools/measure.html',{cache:'no-cache'});html=await r.text()}
+    const f=document.createElement('iframe');f.setAttribute('aria-hidden','true');f.tabIndex=-1;f.style.cssText='position:fixed;left:-12000px;top:0;width:1400px;height:1000px;border:0;visibility:hidden';
+    document.body.appendChild(f);await new Promise(res=>{f.onload=res;f.srcdoc=html});await new Promise(r=>setTimeout(r,400));
+    const w=f.contentWindow;if(typeof w.doLoad!=='function')throw new Error('The Measure sheet did not load');return{f,w}})();
+  _mtool.catch(()=>{_mtool=null});return _mtool}
+async function loadIntoMeasure(fd){const {f,w}=await measureTool();w.doLoad(JSON.parse(JSON.stringify(fd)));await new Promise(r=>setTimeout(r,120));return{f,w}}
+async function buildMasterPreview(j){const fd=masterForSheet(j),sig=JSON.stringify(fd);S.mprev=S.mprev||{};if(S.mprev[j.id]?.sig===sig||S._mprevBusy===j.id+sig)return;S._mprevBusy=j.id+sig;
+  try{const {f}=await loadIntoMeasure(fd);const d=f.contentDocument;const css=[...d.querySelectorAll('style')].map(x=>x.textContent).join('\n');const prev=d.getElementById('prev');
+    S.mprev[j.id]={sig,css,html:prev?prev.outerHTML:''};}catch(e){S.mprev[j.id]={sig,css:'',html:'<p style="padding:16px;color:#A12F2F">Could not draw the measure sheet: '+esc(e.message||e)+'</p>'}}
+  S._mprevBusy=null;hydrateMasterPreview()}
+function hydrateMasterPreview(){const host=document.getElementById('mprev');const j=curJob();if(!host||!j||!j.master)return;const c=S.mprev?.[j.id];
+  const sig=JSON.stringify(masterForSheet(j));if(!c||c.sig!==sig){buildMasterPreview(j);if(!c)return}
+  const root=host.shadowRoot||host.attachShadow({mode:'open'});if(root.__sig===c.sig+'|'+c.html.length&&root.childNodes.length)return;
+  root.innerHTML=`<style>${c.css}\n:host{display:block}.prev-wrap{box-shadow:none;margin:0}</style>${c.html}`;root.__sig=c.sig+'|'+c.html.length}
+async function masterPdf2(){const j=curJob();if(!j||!j.master)return;toast('Building the Master PDF…');
+  try{const {w}=await loadIntoMeasure(masterForSheet(j));const r=await w.savePDF(true);const b=await (await fetch(r.b64)).blob();await save(r.filename,b)}catch(e){toast('Could not build the PDF — '+(e.message||e))}}
+
 /* ---------- hand-off to the portal's own builders ---------- */
 function inPortal(){try{return window.parent!==window&&typeof window.parent.eaOpenPrefilled==='function'}catch(e){return false}}
 function handoffBtn(kind,label,warn){return inPortal()?`<button class="btn ${warn?'':'primary'}" data-act="handoff" data-k="${kind}" title="Opens in a new tab">${label} ↗</button>`:`<span class="small muted">Open the estimator from the portal to use your builders</span>`}
@@ -966,6 +993,7 @@ const ACT={
  wofinal:()=>{const j=curJob();['rough','bsmt'].forEach(t=>{if(j.wo[t])j.wo[t].ai={}});j.wo.final=true;syncWOLines(j);commit(j);toast('Work orders marked final — the next drawing read learns from them')},
  woblank:()=>{const j=curJob();j.wo={tier:'standard',veh:S.defVeh??3.5,fields:{model:j.master?.fields?.fmodel||''},notes:{},flags:[],rough:{rows:{},opts:[],ai:{}},bsmt:{rows:{},opts:[],ai:{}}};S.woAll={rough:true,bsmt:true};commit(j)},
  exportdata:()=>exportData(),
+ mpdf2:()=>masterPdf2(),
  preview:()=>{S.preview=true;S.forceRender=true;render()},
  closepreview:(b,e)=>{if(e&&e.target.closest('.ovl-card')&&!e.target.closest('[data-act="closepreview"].btn'))return;S.preview=false;S.forceRender=true;render()},
  showact:()=>{S.showActuals=true;S.forceRender=true;render()},
@@ -1074,7 +1102,8 @@ async function readMore(files){const j=curJob();if(!j)return;if(!S.ai){toast('Re
     rebuild(j);saveJob(j);if(out.master.ok)autoSaveMaster(j);const bad=['master','wo'].filter(k=>!out[k].ok);
     S.busy=bad.length?{moreErr:bad.map(k=>`${k==='wo'?'Work orders':'Master'}: ${aiErr(out[k].e)}`).join(' · ')}:null;S.forceRender=true;render();if(!bad.length)toast('Master and work orders built')}
   catch(e){S.busy={moreErr:'Could not read the drawing — '+aiErr(e)};S.forceRender=true;render()}}
-async function save(filename,blob){try{const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=filename;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(u);a.remove()},4000);toast('Downloaded '+filename)}catch(e){toast('Download failed — '+(e.message||e))}}
+async function save(filename,blob){try{let doc=document,U=URL;try{if(window.parent!==window&&window.parent.document){doc=window.parent.document;U=window.parent.URL}}catch(e){}
+  const u=U.createObjectURL(blob);const a=doc.createElement('a');a.href=u;a.download=filename;a.style.display='none';doc.body.appendChild(a);a.click();setTimeout(()=>{U.revokeObjectURL(u);a.remove()},4000);toast('Downloaded '+filename)}catch(e){toast('Download failed — '+(e.message||e))}}
 function copyText(text,btn){const done=()=>{toast('Copied')};try{navigator.clipboard.writeText(text).then(done,()=>fallback())}catch(e){fallback()}
   function fallback(){const ta=document.createElement('textarea');ta.value=text;ta.style.cssText='position:fixed;inset:20% 10% auto;height:50%;z-index:30';document.body.appendChild(ta);ta.select();toast('Press Ctrl/Cmd+C, then click away');ta.addEventListener('blur',()=>ta.remove())}}
 function materialText(j){let s=`Eco Air Mechanical — material list\nJob: ${j.address}${j.city?', '+j.city:''}\nDate: ${today()}\n`;let sec='';(j.materials||[]).forEach(m=>{if(m.sec!==sec){sec=m.sec;s+=`\n${sec.toUpperCase()}\n`}s+=`  ${m.qty} ${m.unit}  ${m.item}${m.note?'  ('+m.note+')':''}\n`});return s}

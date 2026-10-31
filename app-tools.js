@@ -126,14 +126,19 @@ function checkEstimatorHash(){
 window.eaAutoSaveMaster=async function(fd,aiRead){
   if(READ_ONLY)return {ok:false,reason:'saving is off in this preview'};
   fd=JSON.parse(JSON.stringify(fd||{}));var f=fd.fields=fd.fields||{};
-  var base=String(f.fmaster||f.fmodel||'').trim()||('AI '+todayISO()),mk=base,n=2;
-  while(D.masters.some(function(x){return x.id===masterSlot(mk,f).id&&!x._deleted;}))mk=base+' ('+(n++)+')';
+  var base=String(f.fmaster||f.fmodel||'').trim()||('AI '+todayISO()),mk=base,n=2,reuse=null;
+  // Reading the same drawing again replaces the estimator's own earlier Master instead of adding another copy
+  var file=aiRead&&aiRead.file||'';
+  if(file)reuse=D.masters.filter(function(x){return !x._deleted&&x._ai&&x._ai.via==='AI estimator'&&x._ai.file===file&&String(x._key||x.label||'').indexOf(base)===0;})
+    .sort(function(a,b){return String(b._savedAt||'').localeCompare(String(a._savedAt||''));})[0]||null;
+  if(reuse){mk=String(reuse.num||reuse.masterNum||reuse._key||base);}
+  else while(D.masters.some(function(x){return x.id===masterSlot(mk,f).id&&!x._deleted;}))mk=base+' ('+(n++)+')';
   f.fmaster=mk;
   var tw=null;try{tw=toolFrame()&&toolFrame().contentWindow;}catch(e){}
   var prevEd=_measureEditing,prevRead=tw?tw.__aiRead:undefined;
-  _measureEditing=null;if(tw)tw.__aiRead=aiRead||null;
+  _measureEditing=reuse?{id:reuse.id,slot:slotOfDoc(reuse)}:null;if(tw)tw.__aiRead=aiRead||null;
   try{await saveMeasureToFirestore(mk,f,fd);}finally{_measureEditing=prevEd;if(tw)tw.__aiRead=prevRead;}
-  return {ok:true,key:mk,id:masterSlot(mk,f).id};
+  return {ok:true,key:mk,id:reuse?reuse.id:masterSlot(mk,f).id};
 };
 window.addEventListener('hashchange',checkEstimatorHash);
 /* The estimator hands its drawing read to the real builders: it closes, and the builder opens pre-filled.

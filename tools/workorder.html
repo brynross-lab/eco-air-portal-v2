@@ -238,6 +238,10 @@ window.addEventListener('message',function(e){
     window.parent.postMessage({__portalMsg:true,type:'FORM_DATA',data:out},'*');
   }
   if(e.data.type==='CAPTURE_PDF'){window.__portalCapture=true;if(typeof savePDF==='function')savePDF();}
+  // Pre-fill from the portal (new work order started from a lot): builder, site, lot, block, unit, model
+  if(e.data.type==='RESTORE_FORM'&&e.data.data){var _d=e.data.data;
+    Object.keys(_d).forEach(function(k){var el=document.getElementById(k);if(el&&_d[k]!=null&&String(_d[k])!==''&&el.type!=='file')el.value=_d[k];});
+    try{calc();}catch(x){}}
   if(e.data.type==='LOAD_WO'&&e.data.snapshot){window.__sentDirty=false;
     window._editingWoId=e.data.woId||null;
     window._originalSnapshot=JSON.parse(JSON.stringify(e.data.snapshot));

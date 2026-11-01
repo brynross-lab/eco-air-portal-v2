@@ -149,7 +149,8 @@ async function loadInvoiceBuilderWOs(preSelect) {
         if(w.status==='invoiced'||w.status==='deleted')return false;
         if(_isAdminInv)return true;
         var by=w._savedBy||w.installer||(w.snapshot&&w.snapshot.fi)||'';
-        return by===_myNameInv||by===_myUserInv;
+        // staff see what they saved themselves (v2 records the owner) or what names them as installer
+        return w._owner===_myUserInv||by===_myNameInv||by===_myUserInv||lc(w.installer||(w.snapshot&&w.snapshot.fi))===lc(_myNameInv);
       });
       _pendingWOs.sort(function(a,b){ return (a.date||a._savedAt||'').localeCompare(b.date||b._savedAt||''); });
       console.log('[invoice] loaded',_pendingWOs.length,'pending WOs from Firestore');

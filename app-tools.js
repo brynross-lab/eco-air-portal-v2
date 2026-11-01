@@ -405,13 +405,31 @@ function portalMessage(e){
       var saveNew=function(fid){
         var bn=String(wo.builder||'').trim();
         if(bn)DB.collection('clients').where('name','==',bn).get().then(function(s){if(s.empty)DB.collection('clients').add({name:bn,createdAt:new Date().toISOString(),createdBy:'WO',type:'builder'}).catch(function(){});}).catch(function(){});
-        wo.status='pending';
+        wo.status='pending';wo._savedBy=meName()||meUser();
         DB.collection('saved_workorder').doc(fid).get().then(function(ex){wo._shared=isAdm()||(ex.exists&&ex.data()._shared===true);return DB.collection('saved_workorder').doc(fid).set(wo);})
           .then(function(){_toolDirty=false;autoAssignFromWO(wo);showToast('Work order saved');return DB.collection('pending_lots').doc(fid).set(wo);})
           .then(function(){syncLists(String(wo.builder||'').trim(),String(wo.site||wo.project||'').trim());})
           .catch(function(err){if(!err||err.code!=='read-only')showToast('Could not save: '+err.message,true);});
       };
-      if(modelKey){
+      if(woLotNum){
+        // A work order for a lot is filed by builder, site, block, lot, unit and type, so lots that share a
+        // model (or a lot's rough-in and basement) never overwrite each other.
+        var tkey=wo.type||(wo.snapshot&&wo.snapshot.type)||'wo',tlab=WO_TYPE_LABELS[tkey]||tkey;
+        var lotId=[wo.builder,wo.site||wo.project,wo.block?'B'+wo.block:'','L'+woLotNum,wo.unit?'U'+wo.unit:'',tkey].filter(Boolean).join('_').replace(/[^a-zA-Z0-9_-]+/g,'_').replace(/_+/g,'_').slice(0,120);
+        var nextFree=function(){var n=2;var used=function(id){return D.wos.some(function(w){return (w.__doc||w._id)===id&&!w._deleted;});};while(used(lotId+'_'+n))n++;return lotId+'_'+n;};
+        DB.collection('saved_workorder').doc(lotId).get().then(function(ex){
+          if(!ex.exists||ex.data()._deleted){saveNew(lotId);return;}
+          var lotLbl='lot '+woLotNum+(wo.unit?' unit '+wo.unit:'');
+          if(ex.data().status==='invoiced'){
+            ask('This '+tlab+' is already invoiced','The '+tlab+' work order for '+h(lotLbl)+' has been invoiced. Save this one as an extra work order for the same lot?',
+              [{label:'Cancel',value:null,style:'ghost'},{label:'Save as extra',value:'extra'}]).then(function(c){if(c==='extra')saveNew(nextFree());else showToast('Not saved.');});
+          }else{
+            ask('Replace the '+tlab+' for '+h(lotLbl)+'?','A '+tlab+' work order for this lot is already saved'+(ex.data().installer?' by '+h(ex.data().installer):'')+' and not invoiced yet.',
+              [{label:'Cancel',value:null,style:'ghost'},{label:'Save as another',value:'extra',style:'ghost'},{label:'Replace it',value:'replace',style:'danger'}]).then(function(c){
+                if(c==='replace')saveNew(lotId);else if(c==='extra')saveNew(nextFree());else showToast('Not saved.');});
+          }
+        }).catch(function(){saveNew(lotId);});
+      }else if(modelKey){
         DB.collection('saved_workorder').doc(modelKey).get().then(function(ex){
           if(ex.exists&&!ex.data()._deleted)modelDuplicateChoice(modelNum,woLotNum).then(function(c){if(c==='overwrite')saveNew(modelKey);else if(c==='lot')saveNew(modelKey+(woLotNum?'_Lot_'+woLotNum.replace(/[^a-zA-Z0-9]/g,'_'):'_'+Date.now()));});
           else saveNew(modelKey);

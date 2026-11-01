@@ -8,6 +8,8 @@
 function _invBlk(w){var s=(w&&w.snapshot)||{};return String((w&&w.block)||s.fblock||'').trim();}
 function _invLot(w){var s=(w&&w.snapshot)||{};return String((w&&w.lot)||s.fl||'').trim();}
 function _invUnit(w){var s=(w&&w.snapshot)||{};return String((w&&w.unit)||s.funit||'').trim();}
+// One cell for the invoice PDF: "Blk 4 · Lot 2 · Unit B" (only the parts that are filled in)
+function _invBLU(w){var b=_invBlk(w),l=_invLot(w),u=_invUnit(w);return [b?'Blk '+b:'',l?'Lot '+l:'',u?'Unit '+u:''].filter(Boolean).join(' \u00b7 ');}
 // What an invoice keeps for each lot, so reopening it shows the same block, lot and unit.
 function _invLotRecord(w){var s=w.snapshot||{};return {type:w.type||'',builder:w.builder||s.fb||'',site:w.site||s.fp||'',project:w.site||s.fp||'',
   block:_invBlk(w),lot:_invLot(w),unit:_invUnit(w),layout:w.layout||s.fla||'',model:w.model||s.fm||'',masterNum:w.masterNum||s.fwo||s.fmaster||'',
@@ -510,7 +512,7 @@ function _appendWOPageToPDF(pdf,wo){
   y+=68;
   pdf.setDrawColor(0,0,0);pdf.setLineWidth(0.5);pdf.line(M,y,W-M,y);y+=14;
   var RH=16;
-  var fields=[['BUILDER',builder],['PROJECT / SITE',site],['LOT #',lot],['LAYOUT',layout],['MODEL',model]];
+  var fields=[['BUILDER',builder],['PROJECT / SITE',site],['BLOCK',_invBlk(wo)],['LOT #',lot],['UNIT',_invUnit(wo)],['LAYOUT',layout],['MODEL',model]];
   fields.forEach(function(f){
     if(!f[1])return;
     fR(M,y,CW,RH,[245,245,245]);sR(M,y,CW,RH,0.3,[200,200,200]);
@@ -602,7 +604,7 @@ function _generateWOSummaryPDF(wo){
   y+=68;
   pdf.setDrawColor(0,0,0);pdf.setLineWidth(0.5);pdf.line(M,y,W-M,y);y+=14;
   var TH=13,RH=16;
-  var fields=[['BUILDER',builder],['PROJECT / SITE',site],['LOT #',lot],['LAYOUT',layout],['MODEL',model]];
+  var fields=[['BUILDER',builder],['PROJECT / SITE',site],['BLOCK',_invBlk(wo)],['LOT #',lot],['UNIT',_invUnit(wo)],['LAYOUT',layout],['MODEL',model]];
   fields.forEach(function(f){
     if(!f[1])return;
     fR(M,y,CW,RH,[245,245,245]);
@@ -1206,9 +1208,9 @@ async function buildInvoicePDF() {
     } else { y += 30; }
     pdf.setDrawColor(0, 0, 0); pdf.setLineWidth(0.5); pdf.line(M, y, W - M, y); y += 8;
     var cols = [
-      { l: '#', x: M, w: 24, r: false }, { l: 'BUILDER', x: M + 24, w: 130, r: false },
-      { l: 'PROJECT', x: M + 154, w: 100, r: false }, { l: 'LOT', x: M + 254, w: 48, r: false },
-      { l: 'LAYOUT', x: M + 302, w: 58, r: false }, { l: 'MODEL', x: M + 360, w: 78, r: false },
+      { l: '#', x: M, w: 24, r: false }, { l: 'BUILDER', x: M + 24, w: 100, r: false },
+      { l: 'PROJECT', x: M + 124, w: 84, r: false }, { l: 'BLOCK / LOT / UNIT', x: M + 208, w: 112, r: false },
+      { l: 'LAYOUT', x: M + 320, w: 48, r: false }, { l: 'MODEL', x: M + 368, w: 70, r: false },
       { l: 'TOTAL', x: M + 438, w: CW - 438, r: true }
     ];
     var TH = 12, RH = 15;
@@ -1226,10 +1228,10 @@ async function buildInvoicePDF() {
       tx(String(ri + 1), M + 3, ry, 8, 'normal', [100, 100, 100]);
       if (r) {
         var rs = r.snapshot || {};
-        tx((r.builder || rs.fb || '').substring(0, 18), cols[1].x + 4, ry, 8, 'normal', [0, 0, 0]);
-        tx((r.site || rs.fp || '').substring(0, 15), cols[2].x + 4, ry, 8, 'normal', [0, 0, 0]);
-        tx((r.lot || rs.fl || '').substring(0, 7), cols[3].x + 4, ry, 8, 'normal', [0, 0, 0]);
-        tx((r.layout || rs.fla || '').substring(0, 8), cols[4].x + 4, ry, 8, 'normal', [0, 0, 0]);
+        tx((r.builder || rs.fb || '').substring(0, 16), cols[1].x + 4, ry, 8, 'normal', [0, 0, 0]);
+        tx((r.site || rs.fp || '').substring(0, 14), cols[2].x + 4, ry, 8, 'normal', [0, 0, 0]);
+        tx(_invBLU(r).substring(0, 26), cols[3].x + 4, ry, 7.5, 'normal', [0, 0, 0]);
+        tx((r.layout || rs.fla || '').substring(0, 7), cols[4].x + 4, ry, 8, 'normal', [0, 0, 0]);
         tx((r.model || rs.fm || '').substring(0, 11), cols[5].x + 4, ry, 8, 'normal', [0, 0, 0]);
         tx(fmt(_invGetTotal(r)), cols[6].x + cols[6].w - 3, ry, 8, 'bold', [0, 0, 0], 'right');
       }

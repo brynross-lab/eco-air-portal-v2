@@ -4,6 +4,15 @@
    Changes: the hidden work-order capture reads the Work Order tool from TOOL_HTML; on phones,
    picking a work order no longer jumps to the next tab, and that tab shows how many are picked. */
 // ─── INVOICE BUILDER ───
+// v2: block, lot and unit can sit on the work order record or only in its snapshot; read both.
+function _invBlk(w){var s=(w&&w.snapshot)||{};return String((w&&w.block)||s.fblock||'').trim();}
+function _invLot(w){var s=(w&&w.snapshot)||{};return String((w&&w.lot)||s.fl||'').trim();}
+function _invUnit(w){var s=(w&&w.snapshot)||{};return String((w&&w.unit)||s.funit||'').trim();}
+// What an invoice keeps for each lot, so reopening it shows the same block, lot and unit.
+function _invLotRecord(w){var s=w.snapshot||{};return {type:w.type||'',builder:w.builder||s.fb||'',site:w.site||s.fp||'',project:w.site||s.fp||'',
+  block:_invBlk(w),lot:_invLot(w),unit:_invUnit(w),layout:w.layout||s.fla||'',model:w.model||s.fm||'',masterNum:w.masterNum||s.fwo||s.fmaster||'',
+  woKey:w._id||w._key||w.num||w.id||'',installer:w.installer||s.fi||'',total:_invGetTotal(w),
+  snapshot:{fb:w.builder||s.fb||'',fp:w.site||s.fp||'',fblock:_invBlk(w),fl:_invLot(w),funit:_invUnit(w),fla:w.layout||s.fla||'',fm:w.model||s.fm||'',fd:s.fd||'',fi:w.installer||s.fi||''}};}
 var _invSelectedWOs = new Set();
 var _invMobile=false,_invActiveTab=0;
 var _invSplitMode=false;
@@ -94,11 +103,20 @@ function renderInvCustomLines() {
 
 function openInvoiceForEdit(inv) {
   _invEditMode = true; _invEditRecord = inv;
+  var _allWOs=(typeof D!=='undefined'&&D.wos)?D.wos:[];
   _invEditLots = (inv.lots || []).map(function(l, i) {
+    var src=null;
+    if(l.woKey)src=_allWOs.find(function(w){return (w._id||w._key||w.num||w.id)===l.woKey;})||null;
+    if(!src&&!l.block&&!l.unit){var lb=String(l.builder||'').toLowerCase(),ls=String(l.site||l.project||'').toLowerCase(),ll=String(l.lot||'');
+      var m=_allWOs.filter(function(w){var s=w.snapshot||{};return String(w.builder||s.fb||'').toLowerCase()===lb&&String(w.site||s.fp||'').toLowerCase()===ls&&_invLot(w)===ll&&(!l.type||w.type===l.type);});
+      if(m.length===1)src=m[0];}
+    var snap=Object.assign({},(src&&src.snapshot)||{},l.snapshot||{});
+    var blk=l.block||(src?_invBlk(src):'')||snap.fblock||'',unt=l.unit||(src?_invUnit(src):'')||snap.funit||'';
+    snap.fblock=blk;snap.funit=unt;if(l.lot&&!snap.fl)snap.fl=l.lot;
     return { _id: 'edit_lot_' + i, builder: l.builder || '', site: l.site || l.project || '',
-      lot: l.lot || '', layout: l.layout || '', model: l.model || '',
-      installer: l.installer || '', masterNum: l.masterNum || '',
-      type: l.type || '', total: l.total || 0, snapshot: {} };
+      block: blk, lot: l.lot || (src?_invLot(src):''), unit: unt, layout: l.layout || '', model: l.model || '',
+      installer: l.installer || '', masterNum: l.masterNum || '', woKey: l.woKey || (src?(src._id||src._key||src.num||src.id):''),
+      type: l.type || '', total: l.total || 0, snapshot: snap };
   });
   _invSelectedWOs = new Set(_invEditLots.map(function(l) { return l._id; }));
   _invCustomLines = (inv.customLines || []).map(function(l) { return { id: 'cl_'+(++_invCustomLineId), desc: l.desc||'', total: l.total||0 }; });
@@ -392,7 +410,7 @@ async function buildSplitInvoicePDFs(){
       await _buildOneSplitPDF(groupWOs,g.installer,g.billTo,sharedNum,String(gi+1),gi*800);
       if(DB){
         var groupTotal=groupWOs.reduce(function(s,w){return s+_invGetTotal(w);},0);
-        var lotData=groupWOs.map(function(w){return{type:w.type,builder:w.builder,site:w.site,lot:w.lot,installer:w.installer,total:w.total};});
+        var lotData=groupWOs.map(_invLotRecord);
         var invId='inv_'+Date.now()+'_g'+gi;
         // Split invoices include partner pay (but NOT apprentices — those are main invoice only)
         var spPartners=_invApprents.filter(function(p){return p.role==='partner'&&p.name&&p.name.trim();});
@@ -668,9 +686,9 @@ function _generateInvoicePDFObj(wos,installerName,billTo,invNum,customAmt,appren
       var rs=r.snapshot||{};
       tx((r.builder||rs.fb||'').substring(0,16),cols[1].x+4,ry,8,'normal',[0,0,0]);
       tx((r.site||rs.fp||'').substring(0,13),cols[2].x+4,ry,8,'normal',[0,0,0]);
-      tx((rs.fblock||'').substring(0,5),cols[3].x+4,ry,8,'normal',[0,0,0]);
-      tx((r.lot||rs.fl||'').substring(0,5),cols[4].x+4,ry,8,'normal',[0,0,0]);
-      tx((rs.funit||'').substring(0,5),cols[5].x+4,ry,8,'normal',[0,0,0]);
+      tx(_invBlk(r).substring(0,5),cols[3].x+4,ry,8,'normal',[0,0,0]);
+      tx(_invLot(r).substring(0,5),cols[4].x+4,ry,8,'normal',[0,0,0]);
+      tx(_invUnit(r).substring(0,5),cols[5].x+4,ry,8,'normal',[0,0,0]);
       tx((r.layout||rs.fla||'').substring(0,7),cols[6].x+4,ry,8,'normal',[0,0,0]);
       tx((r.model||rs.fm||'').substring(0,10),cols[7].x+4,ry,8,'normal',[0,0,0]);
       tx(fmt(_invGetTotal(r)),cols[8].x+cols[8].w-3,ry,8,'bold',[0,0,0],'right');
@@ -826,11 +844,11 @@ function _invSortWOs(arr){
     var sa=a.snapshot||{},sb=b.snapshot||{};
     var site_a=(a.site||sa.fp||'').toLowerCase(), site_b=(b.site||sb.fp||'').toLowerCase();
     if(site_a!==site_b)return site_a<site_b?-1:1;
-    var blk_a=(sa.fblock||'').toLowerCase(), blk_b=(sb.fblock||'').toLowerCase();
+    var blk_a=_invBlk(a).toLowerCase(), blk_b=_invBlk(b).toLowerCase();
     if(blk_a!==blk_b)return blk_a<blk_b?-1:1;
-    var lot_a=parseFloat(a.lot||sa.fl||0)||0, lot_b=parseFloat(b.lot||sb.fl||0)||0;
+    var lot_a=parseFloat(_invLot(a)||0)||0, lot_b=parseFloat(_invLot(b)||0)||0;
     if(lot_a!==lot_b)return lot_a-lot_b;
-    var unit_a=(sa.funit||'').toLowerCase(), unit_b=(sb.funit||'').toLowerCase();
+    var unit_a=_invUnit(a).toLowerCase(), unit_b=_invUnit(b).toLowerCase();
     return unit_a<unit_b?-1:unit_a>unit_b?1:0;
   });
 }
@@ -976,8 +994,8 @@ function renderInvPreview(){
       +'<th style="text-align:right;padding:3px 5px;font-size:9px">TOTAL</th></tr></thead><tbody>';
     added.forEach(function(w,i){
       var s=w.snapshot||{};
-      var b=esc(w.builder||s.fb||'');var site=esc(w.site||s.fp||'');var lot=esc(w.lot||s.fl||'');
-      var block=esc(s.fblock||'');var unit=esc(s.funit||'');
+      var b=esc(w.builder||s.fb||'');var site=esc(w.site||s.fp||'');var lot=esc(_invLot(w));
+      var block=esc(_invBlk(w));var unit=esc(_invUnit(w));
       var bg=i%2===0?'#f8f8f8':'#fff';
       h+='<tr style="background:'+bg+'"><td style="padding:3px 5px">'+b+(site?' / '+site:'')+'</td>'
         +'<td style="padding:3px 5px">'+block+'</td>'
@@ -1360,7 +1378,7 @@ async function buildInvoicePDF() {
       var invRecord = {
         _savedAt: new Date().toISOString(), status: 'active', installer: installerName, billTo: billTo,
         lotTotal: bTot,
-        lots: wos.map(function(w) { return { type: w.type, builder: w.builder, site: w.site, project: w.site, lot: w.lot, installer: w.installer, total: _invGetTotal(w) }; }),
+        lots: wos.map(_invLotRecord),
         customLines: _invCustomLines.map(function(l){return {desc:l.desc,total:l.total};}),
         subtotal: bTot, hst: hst, total: grand,
         payees: payees3,

@@ -506,7 +506,9 @@ async function prepPages(files,onMsg){const max=8;let canv=[],text='',pages=0;
   const note=pages>canv.length?`\nNote: only the first ${canv.length} of ${pages} sheets are attached as images.`:'';
   return{images,text:text.slice(0,40000),note}}
 function aiTakeoff(P){return claudeJSON(READ_PROMPT+P.note+(P.text.trim()?`\n\nExtracted PDF text:\n${P.text}`:''),P.images)}
-function aiMaster(P){return claudeJSON(PORTAL_GUIDE+MASTER_RULES+learnedMasters()+P.note+(P.text.trim()?`\n\nExtracted PDF text (labels and sizes):\n${P.text.slice(0,30000)}`:'')+MASTER_OUT,P.images)}
+// the same lessons the Measure sheet's AI Plan Reader uses: your corrections to past reads, plus your standing rules
+async function planLessons(){try{const P=window.parent;if(P&&P!==window&&typeof P.eaPlanLessons==='function'){const L=await P.eaPlanLessons('');return L&&L.text||''}}catch(e){}return ''}
+async function aiMaster(P){const lessons=await planLessons();return claudeJSON(PORTAL_GUIDE+MASTER_RULES+lessons+learnedMasters()+P.note+(P.text.trim()?`\n\nExtracted PDF text (labels and sizes):\n${P.text.slice(0,30000)}`:'')+MASTER_OUT,P.images)}
 function aiWO(P){return claudeJSON(PORTAL_GUIDE+WO_RULES+woCatalog()+(learnedWOs()||'\n\n(No checked work orders yet. Count from the drawing and flag anything uncertain.)')+P.note+(P.text.trim()?`\n\nExtracted PDF text:\n${P.text.slice(0,30000)}`:'')+WO_OUT,P.images)}
 const AI_ERR={not_granted:'Sign in to the portal to use AI tools.',ai_error:null,rate_limited:'Claude is busy right now — wait a minute and try again.',invalid_json:'Claude did not return a usable answer. Try again.',images_unavailable:'This view cannot send images to Claude.',image_rejected:'One of the sheets was too large or an unsupported type.'};
 const aiErr=e=>(e?.code&&AI_ERR[e.code])||(e?.message||String(e));

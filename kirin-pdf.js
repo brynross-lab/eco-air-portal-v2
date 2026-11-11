@@ -133,26 +133,98 @@ window.eaKirinPDF=async function(data,opts){
     if(spare.length)place('right',spare.shift(),k,String(d.misc[k]));else left.push('Other: '+k+'  '+d.misc[k]);
   });
 
-  // page 2: fittings and anything that didn't fit
-  var fits=d.fittings.map(fitText);
-  if(fits.length||left.length){
+  // ---------- fittings, drawn into Kirin's pictograms (rules from Bryn's marked-up sample) ----------
+  var src=await L.PDFDocument.load(bytes),srcPage=src.getPages()[0];   // clean copy to clone pictograms from
+  var red=ink;
+  var COLX=[38.8,147.3,256.4,365.0,473.5],ROWY=[160.6,228.7,296.8,364.4,432.0,499.5,567.7];
+  var cell=function(c,r){return {x:COLX[c],y:ROWY[r],w:COLX[c+1]-COLX[c],h:ROWY[r+1]-ROWY[r],s:1,pg:page,c:c,r:r};};
+  var at=function(C,dx,dy){return [C.x+dx*C.s,C.y+dy*C.s];};
+  var txt=function(C,t,dx,dy,size,center,fnt){t=String(t||'');if(!t)return;var sz=(size||10)*C.s,F=fnt||bold;var p=at(C,dx,dy);var x=p[0];if(center)x-=F.widthOfTextAtSize(t.replace(/[^\x20-\x7E]/g,''),sz)/2;put(C.pg,t,x,p[1],sz,F);};
+  // W above the form's "x", H below it
+  var dims=function(C,cx,xBase,w,hh){txt(C,w,cx,xBase-10,10,true);txt(C,hh,cx,xBase+12,10,true);};
+  var qtyMark=function(C,q,dx,dy){if(q>1)txt(C,'X'+q,dx,dy,11,false);};
+  var V=function(it,k){return String(it[k]==null?'':it[k]).replace(/["”″]/g,'').trim();};
+  // slot kinds: where on the form each kind lives, and which clean cell to copy for extras
+  var KINDS={
+    pto:{slots:[[0,0],[0,1],[0,2],[0,3],[0,4],[0,5]],srcC:[0,3],draw:function(C,it,q){
+      dims(C,88.2,41,V(it,'v1'),V(it,'v2'));
+      var side=/wide/i.test(it.v3)?['WS','*Wide Side']:/narrow/i.test(it.v3)?['NS','*Narrow side']:null;
+      if(side){txt(C,side[0],6.7,40,8,false,font);txt(C,side[1],6.7,47,7,false,font);}
+      qtyMark(C,q,40,48);}},
+    vd:{slots:[[1,0],[1,1]],srcC:[1,0],draw:function(C,it,q){txt(C,V(it,'v1')+'x'+V(it,'v2'),54.4,65,10,true);qtyMark(C,q,8,30);}},
+    y:{slots:[[1,3],[1,2]],srcC:[1,2],draw:function(C,it,q){
+      txt(C,'A',19.7,35.3,11);txt(C,'B',85.5,36.6,11);txt(C,'C',50.6,65,11);
+      txt(C,['A '+V(it,'v1'),'B '+V(it,'v2'),'C '+V(it,'v3')].join('   '),4,10,7,false);
+      if(it.vType==='Zoning Y')txt(C,'ZONING',60,20,6,false,font);
+      qtyMark(C,q,88,62);}},
+    semiy:{slots:[[1,4],[1,5]],srcC:[1,4],draw:function(C,it,q){
+      txt(C,'A',36.6,17.2,11);txt(C,'B',85.5,38.6,11);txt(C,'C',46.2,65,11);
+      txt(C,'A '+V(it,'v1'),3,30,7);txt(C,'B '+V(it,'v2'),3,39,7);txt(C,'C '+V(it,'v3'),3,48,7);
+      qtyMark(C,q,88,62);}},
+    riser:{slots:[[2,0],[2,1],[2,2],[2,3]],srcC:[2,0],draw:function(C,it,q){
+      if(V(it,'v3'))txt(C,V(it,'v3')+'" rise',14,23,10,false);
+      dims(C,91.7,40.6,V(it,'v1'),V(it,'v2'));qtyMark(C,q,14,62);}},
+    taper:{slots:[[3,1],[3,2],[3,3],[3,4]],srcC:[3,1],draw:function(C,it,q){
+      dims(C,8.4,40.2,V(it,'v1'),V(it,'v2'));dims(C,87.9,40.2,V(it,'v4'),V(it,'v5'));qtyMark(C,q,40,62);}},
+    elbow:{slots:[[2,4],[2,5],[3,5]],srcC:[2,4],draw:function(C,it,q){
+      var ex=C.c===3?87.9:91.7;dims(C,ex,40,V(it,'v1'),V(it,'v2'));
+      var b=V(it,'v4')+'x'+V(it,'v5');if(V(it,'v4')&&b!==V(it,'v1')+'x'+V(it,'v2'))txt(C,'to '+b,ex,63,7,true);
+      if(/Stack/.test(it.vType))txt(C,'STACK',4,10,7,false);
+      qtyMark(C,q,C.c===3?40:45.3,44.1);}},
+    rab:{slots:[[3,0]],srcC:[3,0],draw:function(C,it,q){txt(C,[V(it,'v1'),V(it,'v2')].filter(Boolean).join('x'),80,52,10,true);qtyMark(C,q,30,45);}}
+  };
+  var kindOf=function(it){var t=it.vType||'';
+    if(/PTO$/.test(t))return 'pto';if(t==='Y-Branch'||t==='Zoning Y')return 'y';if(t==='Semi-Y')return 'semiy';
+    if(t==='Riser')return 'riser';if(/^Taper/.test(t))return 'taper';if(/90$/.test(t))return 'elbow';if(t==='RA Boot')return 'rab';return null;};
+  var used={},extras=[],noPic=[];
+  var placeKind=function(k,it){var K=KINDS[k],q=parseInt(it.qty,10)||1;used[k]=used[k]||0;
+    if(used[k]<K.slots.length){var sl=K.slots[used[k]++];var C=cell(sl[0],sl[1]);K.draw(C,it,q);return sl;}
+    extras.push({k:k,it:it,q:q});return null;};
+  d.fittings.forEach(function(it){
+    var k=kindOf(it);if(!k){noPic.push(fitText(it));return;}
+    placeKind(k,it);
+    if(k==='pto')placeKind('vd',it);   // every PTO gets a VD the same size
+  });
+  // extra pictures: copy a clean cell from Kirin's form, then fill it the same way
+  var srcBox=function(k){var c=KINDS[k].srcC,C=cell(c[0],c[1]);return {left:C.x,right:C.x+C.w,top:H-C.y,bottom:H-(C.y+C.h)};};
+  var drawExtra=function(pg,x,y,s,e){
+    var C0=cell(KINDS[e.k].srcC[0],KINDS[e.k].srcC[1]);
+    var ep=embedCache[e.k];pg.drawPage(ep,{x:x,y:pg.getHeight()-y-C0.h*s,xScale:s,yScale:s});
+    pg.drawRectangle({x:x,y:pg.getHeight()-y-C0.h*s,width:C0.w*s,height:C0.h*s,borderColor:L.rgb(0,0,0),borderWidth:0.75});
+    var C={x:x,y:y,w:C0.w*s,h:C0.h*s,s:s,pg:pg,c:C0.c===3&&e.k==='elbow'?2:C0.c,r:C0.r};
+    KINDS[e.k].draw(C,e.it,e.q);
+  };
+  var embedCache={};
+  if(extras.length){
+    var kinds={};extras.forEach(function(e){kinds[e.k]=1;});
+    for(var kk in kinds)embedCache[kk]=await pdf.embedPage(srcPage,srcBox(kk));
+    // first two go in the empty box under the duct table on page 1 (as in the sample)
+    var spots=[[474.5,502.5],[567.6,502.5]],sc=0.85;
+    while(extras.length&&spots.length){var sp=spots.shift();drawExtra(page,sp[0],sp[1],sc,extras.shift());}
+  }
+  if(extras.length||noPic.length||left.length){
     var p2=pdf.addPage([page.getWidth(),H]),y=48;
-    put(p2,'HVAC MEASUREMENT FORM - FITTINGS',39,y,16,bold);y+=22;
+    put(p2,'HVAC MEASUREMENT FORM - MORE FITTINGS',39,y,16,bold);y+=22;
     put(p2,[f.fmaster?'Master '+f.fmaster:'',f.flot?'Lot '+f.flot:'',[f.fname,f.fsite].filter(Boolean).join(' - '),date].filter(Boolean).join('     '),39,y,10,font,714);y+=12;
-    p2.drawLine({start:{x:39,y:H-y},end:{x:753,y:H-y},thickness:1,color:L.rgb(0,0,0)});y+=20;
-    if(fits.length){
-      put(p2,'QTY',45,y,9,bold);put(p2,'FITTING',95,y,9,bold);put(p2,'SIZE',260,y,9,bold);y+=6;
-      p2.drawLine({start:{x:39,y:H-y},end:{x:753,y:H-y},thickness:0.5,color:L.rgb(0.6,0.6,0.6)});y+=13;
-      fits.forEach(function(r){
-        if(y>580){p2=pdf.addPage([page.getWidth(),H]);y=48;}
-        put(p2,'x'+r.qty,45,y,10,bold);put(p2,r.type,95,y,10,font,155);put(p2,r.size,260,y,10,bold,490);y+=16;
-      });
+    p2.drawLine({start:{x:39,y:H-y},end:{x:753,y:H-y},thickness:1,color:L.rgb(0,0,0)});y+=16;
+    var gx=39,cw=COLX[1]-COLX[0];
+    extras.forEach(function(e){
+      if(gx+cw>754){gx=39;y+=72;}
+      if(y+70>590){p2=pdf.addPage([page.getWidth(),H]);y=48;gx=39;}
+      drawExtra(p2,gx,y,1,e);gx+=cw+6;
+    });
+    if(extras.length)y+=82;
+    if(noPic.length){
+      put(p2,'FITTINGS WITH NO PICTURE ON THE FORM',39,y,10,bold);y+=16;
+      noPic.forEach(function(r){if(y>580){p2=pdf.addPage([page.getWidth(),H]);y=48;}put(p2,'x'+r.qty,45,y,10,bold);put(p2,r.type,95,y,10,font,155);put(p2,r.size,260,y,10,bold,490);y+=15;});
+      y+=8;
     }
     if(left.length){
-      y+=10;put(p2,'ALSO ON THIS MASTER (no space on the form)',39,y,10,bold);y+=16;
+      put(p2,'ALSO ON THIS MASTER (no space on the form)',39,y,10,bold);y+=16;
       left.forEach(function(t){if(y>580){p2=pdf.addPage([page.getWidth(),H]);y=48;}put(p2,t,45,y,10,font,700);y+=15;});
     }
   }
+  var fits=d.fittings;
   pdf.setTitle('HVAC Measurement Form '+(f.fmaster||''));pdf.setCreator('Eco Air Staff Portal');pdf.setProducer('Eco Air Staff Portal');
   var out=await pdf.save();
   var name=('Kirin Air - '+[f.fname,f.fmaster,f.flot?'Lot '+f.flot:''].filter(Boolean).join(' - ')).replace(/[\\\/:*?"<>|]+/g,' ').trim()+'.pdf';

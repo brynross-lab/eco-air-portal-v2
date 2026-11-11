@@ -139,7 +139,7 @@ window.eaKirinPDF=async function(data,opts){
   var COLX=[38.8,147.3,256.4,365.0,473.5],ROWY=[160.6,228.7,296.8,364.4,432.0,499.5,567.7];
   var cell=function(c,r){return {x:COLX[c],y:ROWY[r],w:COLX[c+1]-COLX[c],h:ROWY[r+1]-ROWY[r],s:1,pg:page,c:c,r:r};};
   var at=function(C,dx,dy){return [C.x+dx*C.s,C.y+dy*C.s];};
-  var txt=function(C,t,dx,dy,size,center,fnt){t=String(t||'');if(!t)return;var sz=(size||10)*C.s,F=fnt||bold;var p=at(C,dx,dy);var x=p[0];if(center)x-=F.widthOfTextAtSize(t.replace(/[^\x20-\x7E]/g,''),sz)/2;put(C.pg,t,x,p[1],sz,F);};
+  var txt=function(C,t,dx,dy,size,center,fnt){t=String(t||'');if(!t)return;var sz=(size||10)*C.s,F=fnt||bold;var p=at(C,dx,dy);var x=p[0];var w=F.widthOfTextAtSize(t.replace(/[^\x20-\x7E]/g,''),sz);if(center==='r')x-=w;else if(center)x-=w/2;put(C.pg,t,x,p[1],sz,F);};
   // W above the form's "x", H below it
   var dims=function(C,cx,xBase,w,hh){txt(C,w,cx,xBase-10,10,true);txt(C,hh,cx,xBase+12,10,true);};
   var qtyMark=function(C,q,dx,dy){if(q>1)txt(C,'X'+q,dx,dy,11,false);};
@@ -152,15 +152,15 @@ window.eaKirinPDF=async function(data,opts){
       if(side){txt(C,side[0],6.7,40,8,false,font);txt(C,side[1],6.7,47,7,false,font);}
       qtyMark(C,q,40,48);}},
     vd:{slots:[[1,0],[1,1]],srcC:[1,0],draw:function(C,it,q){txt(C,V(it,'v1')+'x'+V(it,'v2'),54.4,65,10,true);qtyMark(C,q,8,30);}},
+    // Y-Branch / Zoning Y -> the Y shapes; the size of each end is written where its A, B, C goes
     y:{slots:[[1,3],[1,2]],srcC:[1,2],draw:function(C,it,q){
-      txt(C,'A',19.7,35.3,11);txt(C,'B',85.5,36.6,11);txt(C,'C',50.6,65,11);
-      txt(C,['A '+V(it,'v1'),'B '+V(it,'v2'),'C '+V(it,'v3')].join('   '),4,10,7,false);
-      if(it.vType==='Zoning Y')txt(C,'ZONING',60,20,6,false,font);
-      qtyMark(C,q,88,62);}},
+      txt(C,V(it,'v1'),27,35.3,9,'r');txt(C,V(it,'v2'),84.5,36.6,9,false);txt(C,V(it,'v3'),54.2,65,9,true);
+      if(it.vType==='Zoning Y')txt(C,'ZONING',4,10,7,false);
+      qtyMark(C,q,4,62);}},
+    // Semi-Y -> the shoe shapes
     semiy:{slots:[[1,4],[1,5]],srcC:[1,4],draw:function(C,it,q){
-      txt(C,'A',36.6,17.2,11);txt(C,'B',85.5,38.6,11);txt(C,'C',46.2,65,11);
-      txt(C,'A '+V(it,'v1'),3,30,7);txt(C,'B '+V(it,'v2'),3,39,7);txt(C,'C '+V(it,'v3'),3,48,7);
-      qtyMark(C,q,88,62);}},
+      txt(C,V(it,'v1'),40.2,13,9,true);txt(C,V(it,'v2'),84.5,38.6,9,false);txt(C,V(it,'v3'),49.8,65,9,true);
+      qtyMark(C,q,4,40);}},
     riser:{slots:[[2,0],[2,1],[2,2],[2,3]],srcC:[2,0],draw:function(C,it,q){
       if(V(it,'v3'))txt(C,V(it,'v3')+'" rise',14,23,10,false);
       dims(C,91.7,40.6,V(it,'v1'),V(it,'v2'));qtyMark(C,q,14,62);}},

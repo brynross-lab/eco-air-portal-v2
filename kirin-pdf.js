@@ -148,8 +148,8 @@ window.eaKirinPDF=async function(data,opts){
   var KINDS={
     pto:{slots:[[0,0],[0,1],[0,2],[0,3],[0,4],[0,5]],srcC:[0,3],draw:function(C,it,q){
       dims(C,88.2,41,V(it,'v1'),V(it,'v2'));
-      var side=/wide/i.test(it.v3)?['WS','*Wide Side']:/narrow/i.test(it.v3)?['NS','*Narrow side']:null;
-      if(side){txt(C,side[0],6.7,40,8,false,font);txt(C,side[1],6.7,47,7,false,font);}
+      var side=/wide/i.test(it.v3)?'WS':/narrow/i.test(it.v3)?'NS':'';
+      if(side)txt(C,side,6.7,44,9,false);
       qtyMark(C,q,40,48);}},
     vd:{slots:[[1,0],[1,1]],srcC:[1,0],draw:function(C,it,q){txt(C,V(it,'v1')+'x'+V(it,'v2'),54.4,65,10,true);qtyMark(C,q,8,30);}},
     // Y-Branch / Zoning Y -> the Y shapes; the size of each end is written where its A, B, C goes

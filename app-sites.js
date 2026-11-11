@@ -208,6 +208,7 @@ function siteMastersTab(site){
     var mdl=masterModel(m),canShare=!isAdm()&&!m._shared&&m._owner===meUser(),canLabel=isAdm()||m._owner===meUser();
     return '<div class="lrow"><button class="lmain" onclick="editMasterTemplate(R('+reg(m)+'))"><span class="top"><b>'+h(m.label||masterKey(m))+'</b>'+masterTypePill(m)+'</span><span class="s">'+h([mdl?'Model '+mdl:'',masterLot(m)?'Lot '+masterLot(m):'',m._savedAt?'Saved '+fmtDate(m._savedAt):''].filter(Boolean).join(' · '))+'</span></button>'
       +(canLabel?'<button class="btn ghost mini" onclick="App.labelMaster(R('+reg(m)+'))">'+(masterType(m)?'Change type':'Set type')+'</button>':'')
+      +'<button class="btn ghost mini" title="Download on Kirin Air\'s form" onclick="App.kirinPDF(R('+reg(m)+'))">Kirin PDF</button>'
       +(canShare?'<button class="btn ghost mini" onclick="App.shareDoc(\'saved_masters\',\''+h(masterKey(m))+'\',\'master\')">Share</button>':'')
       +(isAdm()?'<button class="btn ghost mini" aria-label="Remove master" onclick="App.removeMaster(\''+h(m.id||masterKey(m))+'\')">Remove</button>':'')+'</div>';
   }).join('')+'</div>':'<div class="card"><p class="empty">No masters of this type.</p></div>');
@@ -429,6 +430,7 @@ SHEETS.lot=function(e){
     html+='<div class="sec"><h3>Masters for '+h(model)+'</h3>'+(masters.length?'<div class="card">'+masters.map(function(m){
       var ref=mm&&mm.masterKey===masterKey(m);
       return '<div class="lrow"><button class="lmain" onclick="App.openMasterForLot(R('+reg(m)+'))"><span class="top"><b>'+h(masterKey(m))+'</b>'+masterTypePill(m)+(showTpl?'<span class="pill ok">From master lot</span>':ref?'<span class="pill ok">Reference</span>':'')+'</span><span class="s">'+h(m._savedAt?'Saved '+fmtDate(m._savedAt):'')+'</span></button>'
+        +'<button class="btn ghost mini" title="Download on Kirin Air\'s form for this lot" onclick="App.kirinPDF(R('+reg(m)+'),R('+reg({flot:String(lot.num||''),fsite:site,fname:builder})+'))">Kirin PDF</button>'
         +(admin?'<button class="btn ghost mini" onclick="App.removeMaster(\''+h(m.id||masterKey(m))+'\')">Remove</button>':'<span class="chev">›</span>')+'</div>';
     }).join('')+'</div>':'<p class="s">No masters saved for model '+h(model)+' yet.</p>')+'</div>';
   }

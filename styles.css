@@ -4,7 +4,7 @@
   --accent:#1b5e38;--accent-dark:#033824;--accent-ink:#FFFFFF;--accent-soft:#E3EFE7;
   --warn:#8A5B00;--warn-bg:#FFF1CC;--ok:#1F6B3F;--ok-bg:#DFF1E6;--bad:#A12F2F;--bad-bg:#FBE4E4;--info:#24527F;--info-bg:#E1ECF7;
   /* lot stages: same colours as the current portal's site map legend */
-  --st-none:#B9C0BD;--st-wo:#6B7280;--st-rough:#ea580c;--st-bsmt:#d97706;--st-tie:#2563eb;--st-master:#ca8a04;
+  --st-none:#6B7280;--st-measure:#f97316;--st-rough:#2563eb;--st-bsmt:#16a34a;--st-master:#ca8a04;
   /* names the carried-over invoice markup uses */
   --G:var(--accent);--GD:var(--accent-dark);--bdr:var(--line);--tx1:var(--ink);--tx2:#3f5344;--tx3:var(--muted);--GL:var(--soft);
   color-scheme:light;
@@ -159,7 +159,7 @@ body.ro .sh-head{padding-top:6px}
 .zoom{position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:6px;z-index:2}
 .zoom button{width:44px;height:44px;border-radius:10px;border:1px solid var(--line);background:var(--panel);font-size:22px;cursor:pointer;display:grid;place-items:center}
 .maphint{position:absolute;left:10px;top:10px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:13px;color:var(--muted);z-index:2;max-width:calc(100% - 20px)}
-.flag{border-radius:10px;padding:10px 14px;border:2px solid var(--st-bsmt);background:#FFF7E6}
+.flag{border-radius:10px;padding:10px 14px;border:2px solid #d97706;background:#FFF7E6}
 .flag.missing_material{border-color:var(--bad);background:var(--bad-bg)}
 .flag .k{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--warn)}
 .flag.missing_material .k{color:var(--bad)}
@@ -185,9 +185,9 @@ body.ro .sh-head{padding-top:6px}
 .wk button.sel .has{background:var(--accent-ink)}
 .ag{display:flex;flex-direction:column;gap:8px}
 .ag-item{display:flex;gap:12px;align-items:flex-start;background:var(--panel);border:1px solid var(--line);border-left:5px solid var(--accent);border-radius:8px;padding:12px;cursor:pointer;text-align:left;width:100%}
-.ag-item.invoice{border-left-color:var(--st-bsmt)}
-.ag-item.invoice.tendered{border-left-color:var(--st-tie)}
-.ag-item.job{border-left-color:var(--st-wo)}
+.ag-item.invoice{border-left-color:#d97706}
+.ag-item.invoice.tendered{border-left-color:#2563eb}
+.ag-item.job{border-left-color:#6B7280}
 .ag-t{width:76px;flex:none;font-size:13px;font-weight:700;color:var(--muted);text-transform:none}
 
 /* tool viewer */
@@ -233,3 +233,6 @@ body.ro .sh-head{padding-top:6px}
 .searchbar{display:flex;align-items:center;gap:10px;width:100%;margin-top:14px;padding:12px 14px;border:1px solid var(--line,#cfd8d2);border-radius:12px;background:var(--panel);color:var(--muted,#5f6b64);font:inherit;font-size:16px;text-align:left;cursor:pointer}
 .searchbar:hover,.searchbar:focus-visible{border-color:var(--accent)}
 .searchbar svg{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+
+/* lot steps ticked automatically */
+.task .nm .auto{display:block;font-weight:400;font-size:13px;color:var(--muted)}

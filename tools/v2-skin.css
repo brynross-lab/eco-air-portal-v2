@@ -108,6 +108,13 @@ textarea{min-height:80px}
 .toast{background:var(--v2ink);border-radius:10px;font-size:14px;bottom:24px;right:auto;left:50%;transform:translate(-50%,80px)}
 .toast.show{transform:translate(-50%,0)}
 
+/* Work order editor: the paired item lists (vents, extras) are one column at every width.
+   Side by side they are wider than the editor, so the second list couldn't be reached on a desktop. */
+.fsb div[style*="grid-template-columns:1fr 1fr"]:has(> #vc1),
+.fsb div[style*="grid-template-columns:1fr 1fr"]:has(> #bec1),
+.fsb div[style*="grid-template-columns:1fr 1fr"]:has(> #hiv_ec1){grid-template-columns:1fr!important}
+.fp{overflow-x:hidden}
+
 @media(max-width:768px){
   .fp{top:0;height:auto}
   .topbar{padding:8px 12px;height:auto;min-height:56px}

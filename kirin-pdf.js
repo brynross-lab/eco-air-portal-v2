@@ -155,6 +155,7 @@ window.eaKirinPDF=async function(data,opts){
     // Y-Branch / Zoning Y -> the Y shapes; the size of each end is written where its A, B, C goes
     y:{slots:[[1,3],[1,2]],srcC:[1,2],draw:function(C,it,q){
       txt(C,V(it,'v1'),27,35.3,9,'r');txt(C,V(it,'v2'),84.5,36.6,9,false);txt(C,V(it,'v3'),54.2,65,9,true);
+      if(it.vType==='Stack Y')txt(C,'STACK Y',54.2,11,9,true);
       if(it.vType==='Zoning Y')txt(C,'ZONING',4,10,7,false);
       qtyMark(C,q,4,62);}},
     // Semi-Y -> the shoe shapes
@@ -174,7 +175,7 @@ window.eaKirinPDF=async function(data,opts){
     rab:{slots:[[3,0]],srcC:[3,0],draw:function(C,it,q){txt(C,[V(it,'v1'),V(it,'v2')].filter(Boolean).join('x'),80,52,10,true);qtyMark(C,q,30,45);}}
   };
   var kindOf=function(it){var t=it.vType||'';
-    if(/PTO$/.test(t))return 'pto';if(t==='Y-Branch'||t==='Zoning Y')return 'y';if(t==='Semi-Y')return 'semiy';
+    if(/PTO$/.test(t))return 'pto';if(t==='Y-Branch'||t==='Stack Y'||t==='Zoning Y')return 'y';if(t==='Semi-Y')return 'semiy';
     if(t==='Riser')return 'riser';if(/^Taper/.test(t))return 'taper';if(/90$/.test(t))return 'elbow';if(t==='RA Boot')return 'rab';return null;};
   var used={},extras=[],noPic=[];
   var placeKind=function(k,it){var K=KINDS[k],q=parseInt(it.qty,10)||1;used[k]=used[k]||0;

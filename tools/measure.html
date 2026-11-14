@@ -349,7 +349,9 @@ const FIT_ICONS={
 'Custom':`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"><rect x="8" y="8" width="64" height="64" rx="6" fill="#f0f6f0" stroke="#1b5e38" stroke-width="2" stroke-dasharray="5,3"/><text x="40" y="36" font-size="22" text-anchor="middle" font-family="sans-serif" fill="#1b5e38">+</text><text x="40" y="52" font-size="9" text-anchor="middle" font-family="sans-serif" fill="#1b5e38" font-weight="700">DRAW</text></svg>`
 };
 
-const FIT_TYPES=['Side 90','Stack 90','Side 45','Stack 45','Rise PTO','Flat PTO','Y-Branch','Semi-Y','Zoning Y','Taper (Centre)','Taper (Flat)','Riser','RA Boot','Custom'];
+// Stack Y: a Y-Branch built as a stack fitting. Same picture and sizes as a Y-Branch.
+FIT_ICONS['Stack Y']=FIT_ICONS['Y-Branch'];
+const FIT_TYPES=['Side 90','Stack 90','Side 45','Stack 45','Rise PTO','Flat PTO','Y-Branch','Stack Y','Semi-Y','Zoning Y','Taper (Centre)','Taper (Flat)','Riser','RA Boot','Custom'];
 
 function buildFitPicker(activeType=''){
   return FIT_TYPES.map(t=>`<button type="button" class="fit-chip${t===activeType?' active':''}" data-type="${t}" onclick="pickFit(this)">${FIT_ICONS[t]}<span class="fc-nm">${t}</span></button>`).join('');
@@ -357,11 +359,19 @@ function buildFitPicker(activeType=''){
 
 function pickFit(btn){
   const row=btn.closest('.item-row');
+  const prevType=(row.querySelector('.fit-chip.active')||{dataset:{}}).dataset.type||'';
   row.querySelectorAll('.fit-chip').forEach(c=>c.classList.remove('active'));
   btn.classList.add('active');
   const fd=row.querySelector('.fit-details');
+  // Changing one kind of Y to another (e.g. Y-Branch to Stack Y) keeps the sizes already typed
+  const Y_KINDS=['Y-Branch','Stack Y','Semi-Y','Zoning Y'];
+  let keep=null;
+  if(Y_KINDS.includes(btn.dataset.type)&&Y_KINDS.includes(prevType)){
+    keep={};['v1','v2','v3','v4','v5','v6'].forEach(k=>{const el=fd.querySelector('.'+k);if(el&&el.value)keep[k]=el.value;});
+  }
   fd.style.display='flex';
-  updFit(btn);
+  updFit(btn,keep||undefined);
+  if(keep)render();
 }
 
 const SEC_META = {
@@ -460,7 +470,7 @@ function syncAnn(fd,vt){
   const set=(cls,txt)=>{const el=fd.querySelector('.ann-'+cls);if(el)el.textContent=txt;};
   const fmt=(w,h)=>w&&h?w+'×'+h+'"':w?w+'"':'—';
   const fmtS=v=>v?v+'"':'—';
-  if(vt==='Y-Branch'||vt==='Zoning Y'){
+  if(vt==='Y-Branch'||vt==='Stack Y'||vt==='Zoning Y'){
     set('v1',fmtS(fv('v1')));set('v2',fmtS(fv('v2')));set('v3',fmtS(fv('v3')));
   } else if(vt==='Semi-Y'){
     set('v1',fmtS(fv('v1')));set('v2',fmtS(fv('v2')));set('v3',fmtS(fv('v3')));
@@ -486,7 +496,7 @@ function updFit(sel,saved=null){
   let h='';
   fd.classList.add('labeled');
 
-  if(v==='Y-Branch'||v==='Semi-Y'||v==='Zoning Y'){
+  if(v==='Y-Branch'||v==='Stack Y'||v==='Semi-Y'||v==='Zoning Y'){
     // ── Annotated 3D icon ─────────────────────────────────────────────────
     const ybrSVG=`<svg width="90" height="66" viewBox="14 26 77 54" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
       <path d="M 20.4,40.3 Q 42.6,38.9 50.8,50.3 Q 60.8,40.4 80.4,42.1 L 85,36.1 Q 61.7,35.8 54.4,44.1 Q 45.9,33.3 26.4,34.1 Z" fill="#d6e8d6" stroke="none"/>
@@ -552,7 +562,7 @@ function updFit(sel,saved=null){
       <text x="50" y="75" font-size="7" fill="#1a6e38" font-weight="700" text-anchor="middle" font-family="sans-serif" class="ann-v3">—</text>
     </svg>`;
 
-    const iconSVG = v==='Y-Branch' ? ybrSVG : v==='Semi-Y' ? semySVG : zonySVG;
+    const iconSVG = (v==='Y-Branch'||v==='Stack Y') ? ybrSVG : v==='Semi-Y' ? semySVG : zonySVG;
     const [l1,l2,l3] = ['A','B','C'];
 
     const yAlignSel=`<select class="v6"><option value="">— align —</option><option>Flat Top</option><option>Centred</option><option>Flat Bottom</option></select>`;
@@ -924,7 +934,7 @@ function descItem(row){
       const fv4=fd?.querySelector('.v4')?.value||'';
       const fv5=fd?.querySelector('.v5')?.value||'';
       const fv6=fd?.querySelector('.v6')?.value||'';
-      if(vt==='Y-Branch'||vt==='Semi-Y'||vt==='Zoning Y'){
+      if(vt==='Y-Branch'||vt==='Stack Y'||vt==='Semi-Y'||vt==='Zoning Y'){
         desc=`${vt} — ${fv1||'?'}" / ${fv2||'?'}" / ${fv3||'?'}"`;
         if(fv6)desc+=` (${fv6})`;
       } else if(vt==='Taper (Centre)'||vt==='Taper (Flat)'){
@@ -995,7 +1005,7 @@ function render(){
       const icon=FIT_ICONS[tn]?`<div class="pv-fit-icon">${FIT_ICONS[tn]}</div>`:'';
       const v1=ft.v1||'',v2=ft.v2||'',v3=ft.v3||'',v4=ft.v4||'',v5=ft.v5||'';
       let mLines=[];
-      if(tn==='Y-Branch'||tn==='Zoning Y'||tn==='Semi-Y'){
+      if(tn==='Y-Branch'||tn==='Stack Y'||tn==='Zoning Y'||tn==='Semi-Y'){
         if(v1)mLines.push(`A: ${fmtS(v1)}`);
         if(v2)mLines.push(`B: ${fmtS(v2)}`);
         if(v3)mLines.push(`C: ${fmtS(v3)}`);
@@ -1186,7 +1196,7 @@ function collectExcelData(){
       case 'Side 90':case 'Stack 90':meas=fv('v1')+'x'+fv('v2')+' / '+fv('v4')+'x'+fv('v5');break;
       case 'Side 45':case 'Stack 45':meas=fv('v1')+'x'+fv('v2')+(fv('v3')?' throat '+fv('v3'):'');break;
       case 'Rise PTO':case 'Flat PTO':meas=fv('v1')+'x'+fv('v2');break;
-      case 'Y-Branch':case 'Semi-Y':case 'Zoning Y':meas=fv('v1')+' / '+fv('v2')+' / '+fv('v3');break;
+      case 'Y-Branch':case 'Stack Y':case 'Semi-Y':case 'Zoning Y':meas=fv('v1')+' / '+fv('v2')+' / '+fv('v3');break;
       case 'Taper (Centre)':case 'Taper (Flat)':meas=fv('v1')+'x'+fv('v2')+' / '+fv('v4')+'x'+fv('v5');break;
       case 'Riser':meas=fv('v1')+(fv('v2')?'x'+fv('v2'):'')+(fv('v3')?' rise '+fv('v3'):'');break;
       case 'RA Boot':default:meas=fv('v1')+(fv('v2')?'x'+fv('v2'):'');break;
@@ -1216,6 +1226,7 @@ function collectExcelData(){
 // Circles are drawn OUTSIDE the icon so they don't impede the fitting drawing
 const FIT_ABC_POS={
   'Y-Branch':      [['L',0.50,'A'],['R',0.37,'B'],['B',0.22,'C']],
+  'Stack Y':       [['L',0.50,'A'],['R',0.37,'B'],['B',0.22,'C']],
   'Semi-Y':        [['L',0.50,'A'],['R',0.45,'B'],['B',0.48,'C']],
   'Zoning Y':      [['L',0.54,'A'],['R',0.54,'B'],['B',0.48,'C']],
   'Side 90':       [['L',0.40,'A'],['B',0.52,'B']],
@@ -1228,7 +1239,7 @@ function makeFitLabeledSVG(type){return FIT_ICONS[type]||null;}
 function makeFitAnnSVG(type,v1,v2,v3,v4,v5){
   const fmtWH=(w,h)=>w&&h?w+'×'+h+'"':w?w+'"':'—';
   const fmtS=v=>v?v+'"':'—';
-  if(type==='Y-Branch'){
+  if(type==='Y-Branch'||type==='Stack Y'){
     const l=fmtS(v1),r=fmtS(v2),o=fmtS(v3);
     return`<svg viewBox="14 26 77 54" xmlns="http://www.w3.org/2000/svg"><path d="M 20.4,40.3 Q 42.6,38.9 50.8,50.3 Q 60.8,40.4 80.4,42.1 L 85,36.1 Q 61.7,35.8 54.4,44.1 Q 45.9,33.3 26.4,34.1 Z" fill="#d6e8d6" stroke="none"/><polygon points="80.4,42.1 85,36.1 84.4,54.7 79.6,59.7" fill="#c8c8c8" stroke="none"/><path d="M 79.6,59.7 Q 70.7,60.5 70.8,70.5 L 77,64.9 Q 76.1,59.8 84.4,55.1 L 84.4,54.7 Z" fill="#d8d8d8" stroke="none"/><path d="M 20.2,60.3 L 20.4,40.3 Q 42.6,38.9 50.8,50.3 Q 60.8,40.4 80.4,42.1 L 79.6,59.7 Q 70.7,60.5 70.8,70.5 L 30.2,70.3 Q 29.9,60.8 20.4,60.5 Z" fill="white" stroke="none"/><g stroke="#333" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M 26.4,34.1 Q 45.9,33.3 54.4,44.1 Q 61.7,35.8 85,36.1"/><line x1="85" y1="36.1" x2="80.4" y2="42.1"/><line x1="84.4" y1="54.7" x2="79.6" y2="59.7"/><line x1="85" y1="36.1" x2="84.4" y2="54.7"/><path d="M 84.4,55.1 Q 76.1,59.8 77,64.9 L 70.8,70.5"/><line x1="26.4" y1="34.1" x2="20.4" y2="40.3"/></g><path d="M 20.2,60.3 L 20.4,40.3 Q 42.6,38.9 50.8,50.3 Q 60.8,40.4 80.4,42.1 L 79.6,59.7 Q 70.7,60.5 70.8,70.5 L 30.2,70.3 Q 29.9,60.8 20.4,60.5 Z" fill="none" stroke="#333" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><text x="30" y="51" font-size="5" fill="#888" text-anchor="middle" font-family="sans-serif">Left</text><text x="30" y="60" font-size="8" fill="#1a6e38" font-weight="700" text-anchor="middle" font-family="sans-serif">${l}</text><text x="70" y="51" font-size="5" fill="#888" text-anchor="middle" font-family="sans-serif">Right</text><text x="70" y="60" font-size="8" fill="#1a6e38" font-weight="700" text-anchor="middle" font-family="sans-serif">${r}</text><text x="50" y="66" font-size="5" fill="#888" text-anchor="middle" font-family="sans-serif">Outlet</text><text x="50" y="75" font-size="7" fill="#1a6e38" font-weight="700" text-anchor="middle" font-family="sans-serif">${o}</text></svg>`;
   }
@@ -1440,7 +1451,7 @@ async function savePDF(returnB64=false){
         const fS=v=>v?`${v}"`:null;
         const v1=ft.v1||'',v2=ft.v2||'',v3=ft.v3||'',v4=ft.v4||'',v5=ft.v5||'';
         let mLines=[];
-        if(tn==='Y-Branch'||tn==='Zoning Y'||tn==='Semi-Y'){
+        if(tn==='Y-Branch'||tn==='Stack Y'||tn==='Zoning Y'||tn==='Semi-Y'){
           if(v1)mLines.push(`A: ${fS(v1)}`);
           if(v2)mLines.push(`B: ${fS(v2)}`);
           if(v3)mLines.push(`C: ${fS(v3)}`);
@@ -1856,7 +1867,7 @@ function num(t){var m=String(t).match(/-?\d+(\.\d+)?/);return m?m[0]:'';}
 function wh(t){var p=String(t).replace(/["”″]/g,'').split(/\s*[x×X]\s*/);return [num(p[0]||''),num(p[1]||'')];}
 var EXTRA_OPTS=['Flex 5ft','Flex 10ft','RI Kit','Thimble','HV Box','R/A Frame','Other'];
 var SUBHDRS={duc:['DUCT (LF)','PIPE (LF)','FLEX','EXTRAS'],blk:['BLOCK ENDS','ELBOWS','CLEATS'],rgt:['JOIST LINING','BOOTS (<=5")','BOOTS (6"+)','DAMPERS','TTO','STO']};
-var FIT_NAMES=['Side 90','Stack 90','Side 45','Stack 45','Rise PTO','Flat PTO','Y-Branch','Semi-Y','Zoning Y','Taper (Centre)','Taper (Flat)','Riser','RA Boot','Custom'];
+var FIT_NAMES=['Side 90','Stack 90','Side 45','Stack 45','Rise PTO','Flat PTO','Y-Branch','Stack Y','Semi-Y','Zoning Y','Taper (Centre)','Taper (Flat)','Riser','RA Boot','Custom'];
 // Group items into lines by baseline
 function lines(items,tol){
   var out=[];items.slice().sort(function(a,b){return a.y-b.y||a.x-b.x;}).forEach(function(it){
@@ -1938,7 +1949,7 @@ async function parseMeasurePDF(file){
       var t=ls[ni].text,f={container:'fitting-list',type:'fitting',qty:sl.qty||'1',vType:t,v1:'',v2:'',v3:'',v4:'',v5:''};
       ls.slice(ni+1).forEach(function(L){
         var m=L.text.match(/^([ABC]):\s*(.+)$/),val=(m?m[2]:L.text).replace(/["”″]/g,'').replace(/×/g,'x').trim();
-        if(/^(Y-Branch|Semi-Y|Zoning Y)$/.test(t)){if(m)f[{A:'v1',B:'v2',C:'v3'}[m[1]]]=val;}
+        if(/^(Y-Branch|Stack Y|Semi-Y|Zoning Y)$/.test(t)){if(m)f[{A:'v1',B:'v2',C:'v3'}[m[1]]]=val;}
         else if(/^(Side|Stack) 90$|^Taper/.test(t)){if(m){var p=wh(val);if(m[1]==='A'){f.v1=p[0];f.v2=p[1];}else if(m[1]==='B'){f.v4=p[0];f.v5=p[1];}}}
         else if(/PTO$/.test(t)&&/Side$/.test(L.text)){f.v3=/^Wide/.test(L.text)?'Wide':'Narrow';}
         else if(t==='Custom'){if(!f.v1)f.v1=L.text;}

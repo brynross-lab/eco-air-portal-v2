@@ -1,11 +1,11 @@
 /* Eco Air Portal v2 - Sites: one place per site for the map, lots, work orders, masters and files. */
 
+/* Lot colours on the site plan. A lot shows the furthest step it has reached. */
 var STAGES=[
-  {k:'none',label:'Not started',c:'var(--st-none)',fill:'rgba(156,163,175,0.15)',stroke:'rgba(156,163,175,0.6)'},
-  {k:'wo',label:'Work order, not invoiced',c:'var(--st-wo)',fill:'rgba(156,163,175,0.28)',stroke:'rgba(107,114,128,0.75)'},
-  {k:'rough',label:'Rough-in done',c:'var(--st-rough)',fill:'rgba(234,88,12,0.35)',stroke:'#ea580c'},
-  {k:'bsmt',label:'Basement done',c:'var(--st-bsmt)',fill:'rgba(245,158,11,0.35)',stroke:'#d97706'},
-  {k:'tie',label:'Tie-in done',c:'var(--st-tie)',fill:'rgba(37,99,235,0.35)',stroke:'#2563eb'}
+  {k:'none',label:'Nothing done',c:'var(--st-none)',fill:'rgba(107,114,128,0.45)',stroke:'#4b5563'},
+  {k:'measure',label:'Measure done',c:'var(--st-measure)',fill:'rgba(249,115,22,0.62)',stroke:'#c2410c'},
+  {k:'rough',label:'Rough-in done',c:'var(--st-rough)',fill:'rgba(37,99,235,0.58)',stroke:'#1d4ed8'},
+  {k:'bsmt',label:'Basement done',c:'var(--st-bsmt)',fill:'rgba(22,163,74,0.62)',stroke:'#15803d'}
 ];
 var MASTER_FILL={fill:'rgba(234,179,8,0.38)',stroke:'#ca8a04'};
 var SV={tab:null,mapId:null,stage:null,q:''};          // site view state
@@ -61,16 +61,42 @@ function lotWOsFrom(byLot,lot){
     return true;
   });
 }
-function lotStage(byLot,lot){
-  var all=byLot[String(lot.num==null?'':lot.num)]||[];
-  var b=String(lot.block||'').trim(),u=String(lot.unit||'').trim();
-  var wos=all.filter(function(w){var s=woSnap(w),wb=String(s.fblock||'').trim(),wu=String(s.funit||'').trim();
-    if(b&&u&&wb&&wu)return wb===b&&wu===u;if(u&&wu)return wu===u;return true;});
-  var inv={};wos.forEach(function(w){if(w.status==='invoiced'){var t=woTypeRaw(w);if(t)inv[t]=true;}});
-  if(inv.tie_in||inv.hrv)return 'tie';
-  if(inv.bsmt||inv['bsmt-hiv'])return 'bsmt';
-  if(inv.rough||inv['rough-hiv'])return 'rough';
-  if(wos.length)return 'wo';
+/* What's done on a lot. A step counts as done when its box is ticked, or automatically when:
+     - a work order of that kind is saved for the lot (rough-in, basement, tie-in, HRV, mount boots), or
+     - for Measure: a master exists for the lot's model, or Measure is ticked on another lot with the same model.
+   Returns {measure,rough,bsmt,tie, auto:{taskId:'why'}} — `auto` only lists steps not already ticked by hand. */
+var _measIdx=null;
+function measureIndex(){
+  if(_measIdx)return _measIdx;
+  var idx={};   // "builder|model" -> why
+  var put=function(b,model,why){if(!model)return;var k=lc(b)+'|'+lc(model);if(!idx[k])idx[k]=why;};
+  allMasters().forEach(function(m){var b=getB(m);put(b==='Unknown Builder'?'*':b,masterModel(m),'Master '+(m.masterNum||m.num||masterKey(m))+' is saved for this model');});
+  (D.maps||[]).forEach(function(map){(map.lots||[]).forEach(function(l){
+    if(!l.model)return;var ld=D.lotData[smLotKey(map._id,l)];
+    if(ld&&(ld.tasks||[]).some(function(t){return t.id==='measure'&&t.status==='complete';}))put(map.builder||'*',l.model,'Measured on '+smJobLabel(l));
+  });});
+  _measIdx=idx;setTimeout(function(){_measIdx=null;},0);   // rebuilt on the next redraw
+  return idx;
+}
+var WO_TASK={rough:'rough_in','rough-hiv':'rough_in',bsmt:'basement','bsmt-hiv':'basement',tie_in:'tie_ins',hrv:'hrv',mount:'completion'};
+function lotProgress(byLot,lot,map){
+  var wos=lotWOsFrom(byLot,lot).filter(function(w){return !w._pendingEdit&&w.status!=='deleted';});
+  var ld=(map&&D.lotData[smLotKey(map._id,lot)])||{},ticked={},auto={};
+  (ld.tasks||[]).forEach(function(t){if(t.status==='complete')ticked[t.id]=true;});
+  wos.forEach(function(w){var id=WO_TASK[woTypeKey(w)]||WO_TASK[woTypeRaw(w)];if(id&&!ticked[id]&&!auto[id])auto[id]=woTypeLabel(w)+' work order saved'+(woInstaller(w)?' by '+woInstaller(w):'');});
+  if(!ticked.measure&&lot.model){
+    var idx=measureIndex(),why=idx[lc(map&&map.builder)+'|'+lc(lot.model)]||idx['*|'+lc(lot.model)];
+    if(!why&&!(map&&map.builder)){var hit=Object.keys(idx).find(function(k){return k.split('|')[1]===lc(lot.model);});if(hit)why=idx[hit];}
+    if(why)auto.measure=why;
+  }
+  var has=function(id){return !!(ticked[id]||auto[id]);};
+  return {measure:has('measure'),rough:has('rough_in'),bsmt:has('basement'),tie:has('tie_ins')||has('hrv'),auto:auto,ticked:ticked};
+}
+function lotStage(byLot,lot,map){
+  var p=lotProgress(byLot,lot,map);
+  if(p.bsmt||p.tie)return 'bsmt';
+  if(p.rough)return 'rough';
+  if(p.measure)return 'measure';
   return 'none';
 }
 function isMasterLot(map,lot){
@@ -151,8 +177,8 @@ function siteScreen(site){
   if(maps.length>1)html+='<div class="chips" style="margin-top:12px" role="group" aria-label="Site plan">'+maps.map(function(m){return '<button aria-pressed="'+(m._id===SV.mapId)+'" onclick="App.siteMap(\''+h(m._id)+'\')">'+h(m.name||'Plan')+(m._closed?' (closed)':'')+'</button>';}).join('')+'</div>';
   if(map){
     var byLot=mapWOs(map),lots=map.lots||[],cnt={};STAGES.forEach(function(s){cnt[s.k]=0;});
-    lots.forEach(function(l){cnt[lotStage(byLot,l)]++;});
-    html+='<div class="card" style="padding:14px;margin-top:14px"><div class="sec-h"><span class="s">Lots tied in</span><b class="num" style="font-size:20px">'+cnt.tie+' of '+lots.length+'</b></div>'
+    var tied=0;lots.forEach(function(l){cnt[lotStage(byLot,l,map)]++;if(lotProgress(byLot,l,map).tie)tied++;});
+    html+='<div class="card" style="padding:14px;margin-top:14px"><div class="sec-h"><span class="s">Lots tied in</span><b class="num" style="font-size:20px">'+tied+' of '+lots.length+'</b></div>'
       +'<div class="bar" style="margin:10px 0 12px">'+STAGES.map(function(s){return lots.length?'<span style="width:'+(cnt[s.k]/lots.length*100)+'%;background:'+s.c+'"></span>':'';}).join('')+'</div>'
       +'<div class="legend">'+STAGES.map(function(s){return '<button aria-pressed="'+(SV.stage===s.k)+'" onclick="App.siteStage(\''+s.k+'\')"><b><span class="sw" style="background:'+s.c+'"></span>'+cnt[s.k]+'</b>'+s.label+'</button>';}).join('')+'</div>'
       +(ready.length?'<p class="s" style="margin-top:10px">'+pl(ready.length,'work order')+' ready to invoice, '+money0(readySum)+' before HST.</p>':'')+'</div>';
@@ -179,11 +205,11 @@ function siteMapTab(site,map){
 App.toggleEdit=function(){MAPV.edit=!MAPV.edit;renderScreen();};
 function siteLotsTab(site,map){
   var byLot=mapWOs(map),lots=sortLots(map.lots||[]);
-  if(SV.stage)lots=lots.filter(function(l){return lotStage(byLot,l)===SV.stage;});
+  if(SV.stage)lots=lots.filter(function(l){return lotStage(byLot,l,map)===SV.stage;});
   if(!lots.length)return '<div class="card"><p class="empty">'+(SV.stage?'No lots at this stage.':'No lots marked on this plan yet.')+'</p></div>';
   return '<div class="card">'+lots.map(function(l){
-    var st=stageOf(lotStage(byLot,l)),key=smLotKey(map._id,l),ld=D.lotData[key]||{};
-    var tasks=ld.tasks||[],done=tasks.filter(function(t){return t.status==='complete';}).length;
+    var prog=lotProgress(byLot,l,map),st=stageOf(lotStage(byLot,l,map)),key=smLotKey(map._id,l),ld=D.lotData[key]||{};
+    var tasks=ld.tasks||defaultTasks(),done=tasks.filter(function(t){return t.status==='complete'||prog.auto[t.id];}).length;
     var fl=(ld.flags||[]).filter(function(f){return !f.resolved;}).length;
     return '<div class="lrow"><button class="lmain" onclick="App.openLot(\''+h(map._id)+'\',\''+h(key)+'\')"><span class="top"><b>'+h(smJobLabel(l))+(isMasterLot(map,l)?' ★':'')+'</b>'+(fl?'<span class="pill bad">'+pl(fl,'flag')+'</span>':'')+'</span>'
       +'<span class="strip"><span class="pill"><span class="sw" style="background:'+st.c+'"></span>'+st.label+'</span>'+(l.model?'<span class="s">'+h(l.model)+'</span>':'')+(tasks.length?'<span class="s">'+done+'/'+tasks.length+' tasks</span>':'')+'</span></button><span class="chev">›</span></div>';
@@ -275,11 +301,11 @@ function mountMap(wrap,map){
   var byLot=mapWOs(map);
   var stage=document.createElement('div');stage.className='mapstage';stage.style.width=dw+'px';stage.style.height=dh+'px';
   var rects=(map.lots||[]).map(function(l,i){
-    var st=lotStage(byLot,l),dim=SV.stage&&st!==SV.stage,ms=isMasterLot(map,l);
-    var c=MAPV.edit?{fill:'rgba(59,130,246,0.3)',stroke:'#2563eb'}:ms?MASTER_FILL:stageOf(st);
+    var st=lotStage(byLot,l,map),dim=SV.stage&&st!==SV.stage,ms=isMasterLot(map,l);
+    var c=MAPV.edit?{fill:'rgba(59,130,246,0.3)',stroke:'#2563eb'}:stageOf(st);   // the master lot keeps its progress colour and gets a gold outline and star
     var x=l.x*dw,y=l.y*dh,w=l.w*dw,hh=l.h*dh;
-    return '<rect class="lot" data-i="'+i+'" x="'+x+'" y="'+y+'" width="'+w+'" height="'+hh+'" rx="2" fill="'+c.fill+'" stroke="'+c.stroke+'" stroke-width="1.5" opacity="'+(dim?0.25:1)+'"><title>'+h(smJobLabel(l)+' · '+stageOf(st).label)+'</title></rect>'
-      +(ms&&w>14&&hh>10?'<text x="'+(x+w-3)+'" y="'+(y+10)+'" text-anchor="end" font-size="'+Math.min(10,hh*0.3)+'" font-weight="900" fill="#92400e" pointer-events="none">★</text>':'');
+    return '<rect class="lot" data-i="'+i+'" x="'+x+'" y="'+y+'" width="'+w+'" height="'+hh+'" rx="2" fill="'+c.fill+'" stroke="'+(ms&&!MAPV.edit?MASTER_FILL.stroke:c.stroke)+'" stroke-width="'+(ms&&!MAPV.edit?3:2)+'" opacity="'+(dim?0.2:1)+'"><title>'+h(smJobLabel(l)+' · '+stageOf(st).label)+'</title></rect>'
+      +(ms&&w>14&&hh>10?'<text x="'+(x+w-3)+'" y="'+(y+10)+'" text-anchor="end" font-size="'+Math.min(10,hh*0.3)+'" font-weight="900" fill="#fde047" stroke="#713f12" stroke-width="0.6" pointer-events="none">★</text>':'');
   }).join('');
   stage.innerHTML='<img src="'+map.imageData+'" alt="Site plan for '+h(map.name||map.site||'')+'" width="'+dw+'" height="'+dh+'" draggable="false">'
     +'<svg width="'+dw+'" height="'+dh+'" viewBox="0 0 '+dw+' '+dh+'"><g id="lotsG">'+rects+'</g><rect id="drawRect" x="0" y="0" width="0" height="0" fill="rgba(34,197,94,0.15)" stroke="#16a34a" stroke-width="2" stroke-dasharray="5 3" display="none"/></svg>';
@@ -391,7 +417,7 @@ SHEETS.lot=function(e){
   var s0=wos[0]?woSnap(wos[0]):{};
   var builder=map.builder||s0.fb||s0.fbuilder||map.name||'',site=map.site||s0.fp||s0.fsite||'';
   var model=lot.model||s0.fm||s0.fmodel||'';
-  var st=stageOf(lotStage(byLot,lot));
+  var prog=lotProgress(byLot,lot,map),st=stageOf(lotStage(byLot,lot,map));
   var masters=modelMastersFor(model).filter(canSee);
   var mm=model?D.modelMasters[smModelMasterKey(model)]:null,isMaster=!!(mm&&mm.masterLotKey===e.key);
   // templates from the model's master lot (same rules as the current portal)
@@ -439,12 +465,12 @@ SHEETS.lot=function(e){
   html+='<div class="sec droppable"'+(admin?dropAttrs('App.dropToLot(event,R('+dctx+'))'):'')+'><div class="sec-h"><h3>Documents</h3>'+(admin?'<button class="link" onclick="App.uploadDoc(R('+dctx+'))">Upload</button>':'')+'</div>'+(admin?'<p class="s drophint">Drag files here to upload them to this lot.</p>':'')
     +(tplDocs.length||docs.length?'<div class="card">'+tplDocs.map(function(d){return '<div class="lrow"><a class="lmain" href="'+h(d.url)+'" target="_blank" rel="noopener"><span class="top"><b>'+h(d.label||d.fileName)+'</b><span class="pill ok">From master lot</span></span><span class="s">'+h(d.type)+'</span></a></div>';}).join('')+docs.map(docRow).join('')+'</div>':'<p class="s">No documents for this lot.</p>')+'</div>';
   // tasks
-  var done=tasks.filter(function(t){return t.status==='complete';}).length;
+  var done=tasks.filter(function(t){return t.status==='complete'||prog.auto[t.id];}).length;
   var me=meName(),names=staffNamesForPicker();
   html+='<div class="sec"><div class="sec-h"><h3>Tasks</h3><span class="s">'+done+' of '+tasks.length+' done</span></div><div class="prog"><span style="width:'+(tasks.length?done/tasks.length*100:0)+'%"></span></div><div>'
     +tasks.map(function(t,ti){
-      var mine=t.assignedTo&&t.assignedTo===me,canTick=admin||mine;
-      return '<div class="task"><input type="checkbox" aria-label="'+h(t.label)+' done" '+(t.status==='complete'?'checked':'')+(canTick?'':' disabled')+' onchange="App.taskDone('+ti+',this.checked)"><span class="nm">'+h(t.label)+'</span>'
+      var mine=t.assignedTo&&t.assignedTo===me,canTick=admin||mine,auto=t.status!=='complete'&&prog.auto[t.id];
+      return '<div class="task"><input type="checkbox" aria-label="'+h(t.label)+' done" '+(t.status==='complete'||auto?'checked':'')+(canTick&&!auto?'':' disabled')+' onchange="App.taskDone('+ti+',this.checked)"><span class="nm">'+h(t.label)+(auto?'<span class="auto">Done automatically: '+h(auto)+'</span>':'')+'</span>'
         +(admin?'<select aria-label="Assign '+h(t.label)+'" onchange="App.assignTask('+ti+',this.value)"><option value="">'+(t.assignedTo?'Unassign':'Assign…')+'</option>'+(t.assignedTo?'<option value="'+h(t.assignedTo)+'" selected>'+h(t.assignedTo)+'</option>':'')+names.filter(function(n){return n!==t.assignedTo;}).map(function(n){return '<option value="'+h(n)+'">'+h(n===me?n+' (me)':n)+'</option>';}).join('')+'</select>'
           :(t.assignedTo?'<span class="pill'+(mine?' info':'')+'">'+h(t.assignedTo)+'</span>':''))+'</div>';
     }).join('')+'</div></div>';

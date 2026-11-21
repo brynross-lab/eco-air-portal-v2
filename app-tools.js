@@ -164,10 +164,17 @@ function openNewWO(ctx){
     if(ctx&&(ctx.builder||ctx.site))whenToolReady(function(){postToTool({type:'RESTORE_FORM',data:{fb:ctx.builder||'',fp:ctx.site||''}});});
   });
 }
-function openNewWOForLot(map,lot){
-  openToolCore('workorder','Work order · '+smJobLabel(lot)).then(function(){
-    whenToolReady(function(){postToTool({type:'RESTORE_FORM',data:{fb:map.builder||'',fp:map.site||'',fl:lot.num||'',fblock:lot.block||'',funit:lot.unit||'',fm:lot.model||''}});});
+function openNewWOForLot(map,lot,type){
+  openToolCore('workorder',(type?(WO_TYPE_LABELS[type]||'Work order'):'Work order')+' · '+smJobLabel(lot)).then(function(){
+    whenToolReady(function(){postToTool({type:'RESTORE_FORM',data:{fb:map.builder||'',fp:map.site||'',fl:lot.num||'',fblock:lot.block||'',funit:lot.unit||'',fm:lot.model||'',__type:type||''}});});
   });
+}
+/* Measure sheet for a lot: starts from the model's master when there is one, otherwise a blank sheet with the lot filled in */
+function openMeasureForLot(map,lot){
+  var masters=lot.model?allMasters().filter(function(m){return lc(masterModel(m))===lc(lot.model)&&canSee(m);}):[];
+  if(masters.length)return openMasterForLot(masters[0],map,lot);
+  var patch={flot:String(lot.num||''),fname:map.builder||'',fsite:map.site||'',fmodel:lot.model||''};
+  openToolCore('measure','Measure sheet · '+smJobLabel(lot)).then(function(){whenToolReady(function(){postToTool({type:'RESTORE_FORM',data:patch});});});
 }
 function openWOInTool(w){
   var snap=w.snapshot||{},masterNum=w.masterNum||snap.fmaster||'';

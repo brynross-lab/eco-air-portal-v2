@@ -236,3 +236,60 @@ body.ro .sh-head{padding-top:6px}
 
 /* lot steps ticked automatically */
 .task .nm .auto{display:block;font-weight:400;font-size:13px;color:var(--muted)}
+
+/* ── site map, map-first ── */
+.mapwrap.big{height:max(320px,min(66vh,640px))}
+@media (min-width:900px){.mapwrap.big{height:max(420px,min(72vh,760px))}}
+.mapstage text.lotnum{fill:#fff;font-weight:800;text-anchor:middle;dominant-baseline:central;paint-order:stroke;stroke:rgba(17,24,39,.7);stroke-width:1.6px;stroke-linejoin:round;font-family:inherit}
+.mapstage text.flagmark{fill:#fff;font-weight:900;text-anchor:middle;dominant-baseline:central;font-family:Arial,sans-serif}
+.mapstage rect.lot.sel{filter:drop-shadow(0 0 3px rgba(17,24,39,.55))}
+.zoom{top:10px;bottom:auto}
+.mapfind{position:absolute;left:10px;top:10px;z-index:3;width:min(170px,calc(100% - 80px))}
+.mapfind input{height:44px;padding:8px 12px;border-radius:10px;border:1px solid var(--line);background:var(--panel);box-shadow:0 1px 4px rgba(0,0,0,.08);font-size:16px}
+.maphint.small{top:auto;bottom:10px;left:10px;font-size:13px}
+.legend-chips{display:flex;gap:6px;overflow-x:auto;margin-top:10px;padding-bottom:2px}
+.legend-chips button{flex:none;display:flex;align-items:center;gap:6px;background:var(--panel);border:1.5px solid var(--line);border-radius:99px;padding:7px 12px;font-size:14px;color:var(--muted);cursor:pointer;white-space:nowrap;min-height:40px}
+.legend-chips button b{color:var(--ink);font-variant-numeric:tabular-nums}
+.legend-chips button[aria-pressed=true]{border-color:var(--ink);background:var(--soft);color:var(--ink)}
+.legend-chips .sw{width:12px;height:12px;border-radius:3px;display:inline-block}
+.legend-chips .sw.ring{border:1.6px dashed var(--ink);background:none}
+.site-sum{margin:8px 2px 0}
+.site-sum .link{font-size:inherit;padding:0}
+/* quick lot card over the map */
+.lotcard{position:absolute;left:8px;right:8px;bottom:8px;z-index:4;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.2);padding:10px 12px 12px;display:flex;flex-direction:column;gap:8px;max-width:480px;margin:0 auto;touch-action:auto}
+.lotcard[hidden]{display:none}
+.lc-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.lc-title{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:17px;min-width:0}
+.lc-title .sw{width:12px;height:12px;border-radius:3px;display:inline-block;align-self:center}
+.lc-title .s{font-size:14px}
+.lc-x{width:40px;height:40px;margin:-6px -6px -6px 0;border:0;background:none;font-size:26px;line-height:1;color:var(--muted);cursor:pointer;border-radius:10px;flex:none}
+.lc-steps{display:flex;gap:4px}
+.lc-steps .step{flex:1;display:flex;align-items:center;justify-content:center;gap:3px;font-size:12.5px;padding:5px 2px;border-radius:7px;background:var(--soft);color:var(--muted);font-weight:600;white-space:nowrap}
+.lc-steps .step i{font-style:normal;font-weight:900}
+.lc-steps .step.done{background:#dcfce7;color:#166534}
+.lc-flag{text-align:left;border:1.5px solid #fca5a5;background:#fef2f2;color:#991b1b;border-radius:9px;padding:7px 10px;font-weight:600;cursor:pointer;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lotcard .btn.wide{min-height:46px}
+.lc-done{margin:0}
+.lc-acts{display:flex;gap:6px}
+.lc-acts button{flex:1 1 0;min-width:0;min-height:40px;border:1px solid var(--line);background:var(--panel);border-radius:9px;padding:6px 6px;font-weight:600;color:var(--accent-dark);cursor:pointer;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chips.small button{padding:4px 11px;font-size:14px}
+.site-hd{align-items:center}
+.site-hd h1{font-size:24px;margin:0}
+body.on-map .fab{display:none}
+.maplegend{position:absolute;left:0;right:0;bottom:0;z-index:2;padding:8px 8px 8px;background:linear-gradient(to top,rgba(245,246,245,.96),rgba(245,246,245,.75) 70%,rgba(245,246,245,0))}
+.maplegend .legend-chips{margin:0}
+.maplegend .legend-chips button{min-height:36px;padding:5px 11px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.mapwrap.carded .maplegend,.mapwrap.carded .maphint{display:none}
+.maphint.small{bottom:62px}
+
+/* Home: site tiles with a live mini map */
+.site-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.site-tile{display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;padding:0;text-align:left;cursor:pointer;color:inherit;font:inherit}
+.site-tile:hover,.site-tile:focus-visible{border-color:var(--accent)}
+.site-tile .minimap{display:block;width:100%;height:128px;background:#eef1ee}
+.site-tile .minimap.empty{display:grid;place-items:center;color:var(--muted)}
+.site-tile .st-body{display:flex;flex-direction:column;gap:5px;padding:10px 12px 12px}
+.site-tile .st-body b{font-size:17px}
+.site-tile .bar{height:8px}
+.maphint{pointer-events:none}
+.maplegend{pointer-events:none}.maplegend .legend-chips{pointer-events:auto}

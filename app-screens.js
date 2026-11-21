@@ -130,6 +130,8 @@ SCREENS.home = function(){
   var html='<p class="date">'+new Date().toLocaleDateString('en-CA',{weekday:'long',month:'long',day:'numeric'})+'</p><h1>'+h(greet+(first?', '+first:''))+'</h1>';
   html+=searchBar();
   if(!D.loaded&&!D.wos.length)return html+'<div class="blk"><div class="card"><p class="empty">Loading your work…</p></div></div>';
+  // the site maps come first: most of the day starts from a lot on a plan
+  if(typeof homeSites==='function')html+=homeSites();
 
   // Today: work orders dated today and jobs scheduled today
   var t=todayISO();

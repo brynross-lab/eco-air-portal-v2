@@ -8,7 +8,7 @@ var STAGES=[
   {k:'bsmt',label:'Basement done',c:'var(--st-bsmt)',fill:'rgba(22,163,74,0.62)',stroke:'#15803d'}
 ];
 var MASTER_FILL={fill:'rgba(234,179,8,0.38)',stroke:'#ca8a04'};
-var SV={tab:null,mapId:null,stage:null,q:''};          // site view state
+var SV={tab:null,mapId:null,stage:null,q:'',sel:null,mine:false};   // site view state (sel = lot key shown in the quick card)
 var MAPV={mapId:null,z:1,x:0,y:0,edit:false,fit:true};  // map viewer state
 
 /* ───────────────────────── site index ───────────────────────── */
@@ -154,13 +154,14 @@ App.openBuilder=function(name){NAV.sites.push({builder:name});window.scrollTo(0,
 App.openSite=function(key,builder){
   if(TAB!=='sites')TAB='sites';
   NAV.sites=[{builder:builder},{builder:builder,key:key}];
-  SV.tab=null;SV.mapId=null;SV.stage=null;MAPV.edit=false;MAPV.fit=true;
+  SV.tab=null;SV.mapId=null;SV.stage=null;SV.sel=null;SV.mine=false;MAPV.edit=false;MAPV.fit=true;
+  try{localStorage.setItem('ea_lastSite',JSON.stringify({key:key,builder:builder}));}catch(e){}
   while(STACK.length)popSheet();
   window.scrollTo(0,0);renderScreen(false);
 };
 App.siteBack=function(){NAV.sites.pop();MAPV.edit=false;window.scrollTo(0,0);renderScreen(false);};
-App.siteTab=function(t){SV.tab=t;MAPV.edit=false;renderScreen();};
-App.siteMap=function(id){SV.mapId=id;MAPV.fit=true;renderScreen();};
+App.siteTab=function(t){SV.tab=t;SV.sel=null;MAPV.edit=false;renderScreen();};
+App.siteMap=function(id){SV.mapId=id;SV.sel=null;MAPV.fit=true;renderScreen();};
 App.siteStage=function(k){SV.stage=SV.stage===k?null:k;renderScreen();};
 
 function siteScreen(site){
@@ -170,43 +171,65 @@ function siteScreen(site){
   var tabs=[];if(map){tabs.push(['map','Map']);tabs.push(['lots','Lots']);}
   tabs.push(['wos','Work orders']);tabs.push(['masters','Masters']);tabs.push(['files','Files']);
   if(!SV.tab||!tabs.some(function(t){return t[0]===SV.tab;}))SV.tab=tabs[0][0];
-  var ready=siteReady(site),readySum=ready.reduce(function(s,w){return s+woTotal(w);},0);
   var html='<button class="crumb" onclick="App.siteBack()">‹ '+h(site.builder)+'</button>'
-    +'<div class="hd"><div><h1>'+h(site.site)+'</h1><p class="muted">'+h(site.builder)+(map&&map._closed?' · closed':'')+'</p></div>'
-    +'<button class="btn ghost mini" onclick="openNewWO(R('+reg({builder:site.builder,site:site.site})+'))">New work order</button></div>';
-  if(maps.length>1)html+='<div class="chips" style="margin-top:12px" role="group" aria-label="Site plan">'+maps.map(function(m){return '<button aria-pressed="'+(m._id===SV.mapId)+'" onclick="App.siteMap(\''+h(m._id)+'\')">'+h(m.name||'Plan')+(m._closed?' (closed)':'')+'</button>';}).join('')+'</div>';
-  if(map){
-    var byLot=mapWOs(map),lots=map.lots||[],cnt={};STAGES.forEach(function(s){cnt[s.k]=0;});
-    var tied=0;lots.forEach(function(l){cnt[lotStage(byLot,l,map)]++;if(lotProgress(byLot,l,map).tie)tied++;});
-    html+='<div class="card" style="padding:14px;margin-top:14px"><div class="sec-h"><span class="s">Lots tied in</span><b class="num" style="font-size:20px">'+tied+' of '+lots.length+'</b></div>'
-      +'<div class="bar" style="margin:10px 0 12px">'+STAGES.map(function(s){return lots.length?'<span style="width:'+(cnt[s.k]/lots.length*100)+'%;background:'+s.c+'"></span>':'';}).join('')+'</div>'
-      +'<div class="legend">'+STAGES.map(function(s){return '<button aria-pressed="'+(SV.stage===s.k)+'" onclick="App.siteStage(\''+s.k+'\')"><b><span class="sw" style="background:'+s.c+'"></span>'+cnt[s.k]+'</b>'+s.label+'</button>';}).join('')+'</div>'
-      +(ready.length?'<p class="s" style="margin-top:10px">'+pl(ready.length,'work order')+' ready to invoice, '+money0(readySum)+' before HST.</p>':'')+'</div>';
-  }else if(ready.length){
-    html+='<div class="card" style="padding:14px;margin-top:14px"><p>'+pl(ready.length,'work order')+' ready to invoice, '+money0(readySum)+' before HST.</p></div>';
+    +'<div class="hd site-hd"><h1>'+h(site.site)+(map&&map._closed?' <span class="pill">closed</span>':'')+'</h1>'
+    +'<button class="btn ghost mini" onclick="openNewWO(R('+reg({builder:site.builder,site:site.site})+'))">+ Work order</button></div>';
+  if(maps.length>1)html+='<div class="chips small" style="margin-top:8px" role="group" aria-label="Site plan">'+maps.map(function(m){return '<button aria-pressed="'+(m._id===SV.mapId)+'" onclick="App.siteMap(\''+h(m._id)+'\')">'+h(m.name||'Plan')+(m._closed?' (closed)':'')+'</button>';}).join('')+'</div>';
+  html+='<div class="seg" style="margin-top:10px" role="group" aria-label="Site section">'+tabs.map(function(t){return '<button aria-pressed="'+(SV.tab===t[0])+'" onclick="App.siteTab(\''+t[0]+'\')">'+t[1]+'</button>';}).join('')+'</div>';
+  if(SV.tab!=='map'&&SV.tab!=='lots'){
+    var ready=siteReady(site),readySum=ready.reduce(function(s,w){return s+woTotal(w);},0);
+    if(ready.length)html+='<p class="s" style="margin-top:10px">'+pl(ready.length,'work order')+' ready to invoice, '+money0(readySum)+' before HST.</p>';
   }
-  html+='<div class="seg" style="margin-top:14px" role="group" aria-label="Site section">'+tabs.map(function(t){return '<button aria-pressed="'+(SV.tab===t[0])+'" onclick="App.siteTab(\''+t[0]+'\')">'+t[1]+'</button>';}).join('')+'</div>';
-  html+='<div class="blk" style="margin-top:14px">'+({map:siteMapTab,lots:siteLotsTab,wos:siteWOsTab,masters:siteMastersTab,files:siteFilesTab})[SV.tab](site,map)+'</div>';
+  html+='<div class="blk" style="margin-top:12px">'+({map:siteMapTab,lots:siteLotsTab,wos:siteWOsTab,masters:siteMastersTab,files:siteFilesTab})[SV.tab](site,map)+'</div>';
   return html;
 }
+/* Lots assigned to the signed-in person (any task) on this map */
+function myLotKeys(map){
+  var me=lc(meName()),o={};if(!me)return o;
+  (map.lots||[]).forEach(function(l){var k=smLotKey(map._id,l),ld=D.lotData[k];
+    if(ld&&(ld.tasks||[]).some(function(t){return lc(t.assignedTo)===me&&t.status!=='complete';}))o[k]=true;});
+  return o;
+}
+/* Coloured counts that filter the map and lot list; plus "My lots" for whoever has lots assigned */
+function stageLegend(site,map){
+  var byLot=mapWOs(map),lots=map.lots||[],cnt={},tied=0;STAGES.forEach(function(s){cnt[s.k]=0;});
+  lots.forEach(function(l){cnt[lotStage(byLot,l,map)]++;if(lotProgress(byLot,l,map).tie)tied++;});
+  var mine=Object.keys(myLotKeys(map)).length;
+  var ready=siteReady(site),readySum=ready.reduce(function(s,w){return s+woTotal(w);},0);
+  return '<div class="legend-chips" role="group" aria-label="Show lots by progress">'
+    +STAGES.map(function(s){return '<button aria-pressed="'+(SV.stage===s.k)+'" onclick="App.siteStage(\''+s.k+'\')"><span class="sw" style="background:'+s.c+'"></span><b>'+cnt[s.k]+'</b> '+s.label.replace(' done','')+'</button>';}).join('')
+    +(mine?'<button class="mine" aria-pressed="'+!!SV.mine+'" onclick="App.siteMine()"><span class="sw ring"></span><b>'+mine+'</b> My lots</button>':'')+'</div>'
+    +'<p class="s site-sum">'+tied+' of '+lots.length+' lots tied in'+(ready.length?' · <button class="link" onclick="App.siteTab(\'wos\')">'+pl(ready.length,'work order')+' ready to invoice ('+money0(readySum)+')</button>':'')+'</p>';
+}
+App.siteMine=function(){SV.mine=!SV.mine;renderScreen();};
 
 /* map tab: the viewer is mounted after render */
 function siteMapTab(site,map){
   if(!map)return '';
-  var admin=isAdm();
-  return '<div class="mapwrap'+(MAPV.edit?' drawing':'')+'" id="mapMount" data-map="'+h(map._id)+'">'
+  var admin=isAdm(),firstTime=false;try{firstTime=!localStorage.getItem('ea_maphint');}catch(e){}
+  return '<div class="mapwrap big'+(MAPV.edit?' drawing':'')+'" id="mapMount" data-map="'+h(map._id)+'">'
     +(map.imageData?'':'<p class="empty">This site map has no image.</p>')
-    +'<span class="maphint">'+(MAPV.edit?'Drag on the plan to mark a new lot. Tap a lot to edit or remove it.':'Tap a lot to see its work. Pinch or use the buttons to zoom.')+'</span>'
-    +'<div class="zoom"><button aria-label="Zoom in" onclick="mapZoom(1.4)">+</button><button aria-label="Zoom out" onclick="mapZoom(1/1.4)">−</button><button aria-label="Fit the plan" onclick="mapFit()">⤢</button></div></div>'
+    +(MAPV.edit?'<span class="maphint">Drag on the plan to mark a new lot. Tap a lot to edit or remove it.</span>'
+      :'<form class="mapfind" onsubmit="event.preventDefault();App.findLot(this.q.value)"><input name="q" type="search" inputmode="numeric" enterkeyhint="go" placeholder="Find lot #" aria-label="Find a lot by number" autocomplete="off"></form>'
+       +(firstTime?'<span class="maphint small" id="mapHint">Tap a lot for quick actions</span>':''))
+    +'<div class="zoom"><button aria-label="Zoom in" onclick="mapZoom(1.5)">+</button><button aria-label="Zoom out" onclick="mapZoom(1/1.5)">−</button><button aria-label="Fit the whole plan" onclick="mapFit()">⤢</button></div>'
+    +'<div class="maplegend">'+stageLegend(site,map).split('<p class="s site-sum">')[0]+'</div>'
+    +'<div class="lotcard" id="lotCard" hidden></div></div>'
+    +'<p class="s site-sum">'+stageLegend(site,map).split('<p class="s site-sum">')[1]
     +(admin?'<div class="strip" style="margin-top:12px"><button class="btn '+(MAPV.edit?'':'ghost ')+'mini" onclick="App.toggleEdit()">'+(MAPV.edit?'Done marking lots':'Mark lots')+'</button>'
       +(!map._closed?'<button class="btn ghost mini" onclick="App.closeSite(\''+h(map._id)+'\')">Close site</button>':'')
       +'<button class="btn ghost mini" onclick="App.uploadMap(R('+reg(site.builder)+'),R('+reg(site.site)+'))">Add another plan</button></div>':'');
 }
-App.toggleEdit=function(){MAPV.edit=!MAPV.edit;renderScreen();};
+App.toggleEdit=function(){MAPV.edit=!MAPV.edit;SV.sel=null;renderScreen();};
 function siteLotsTab(site,map){
+  if(map)return stageLegend(site,map).replace('class="s site-sum"','class="s site-sum" style="margin-bottom:12px"')+siteLotsTabList(site,map);
+  return siteLotsTabList(site,map);
+}
+function siteLotsTabList(site,map){
   var byLot=mapWOs(map),lots=sortLots(map.lots||[]);
   if(SV.stage)lots=lots.filter(function(l){return lotStage(byLot,l,map)===SV.stage;});
-  if(!lots.length)return '<div class="card"><p class="empty">'+(SV.stage?'No lots at this stage.':'No lots marked on this plan yet.')+'</p></div>';
+  if(SV.mine){var my=myLotKeys(map);lots=lots.filter(function(l){return my[smLotKey(map._id,l)];});}
+  if(!lots.length)return '<div class="card"><p class="empty">'+(SV.mine?'No lots assigned to you here.':SV.stage?'No lots at this stage.':'No lots marked on this plan yet.')+'</p></div>';
   return '<div class="card">'+lots.map(function(l){
     var prog=lotProgress(byLot,l,map),st=stageOf(lotStage(byLot,l,map)),key=smLotKey(map._id,l),ld=D.lotData[key]||{};
     var tasks=ld.tasks||defaultTasks(),done=tasks.filter(function(t){return t.status==='complete'||prog.auto[t.id];}).length;
@@ -285,27 +308,60 @@ App.removeDoc=async function(id){
 
 /* ───────────────────────── map viewer ───────────────────────── */
 function afterScreenRender(){
-  var wrap=document.getElementById('mapMount');if(!wrap)return;
+  var wrap=document.getElementById('mapMount');document.body.classList.toggle('on-map',!!wrap);if(!wrap)return;
   var map=D.maps.find(function(m){return m._id===wrap.dataset.map;});if(!map||!map.imageData)return;
   mountMap(wrap,map);
+  if(SV.sel&&!MAPV.edit)renderLotCard(map);
 }
 var _mapCtx=null;
 function mountMap(wrap,map){
   var W=map.imageWidth||1200,H=map.imageHeight||800;
   var cw=wrap.clientWidth||600;
-  wrap.style.height=Math.max(240,Math.min(Math.round(cw*H/W)+2,Math.round(window.innerHeight*0.64)))+'px';
+  if(wrap.classList.contains('big')){
+    // fill the screen from the top of the map to just above the tab bar, so the plan is the page
+    var top=wrap.getBoundingClientRect().top+window.scrollY,nav=(document.getElementById('tabs')||{}).offsetHeight||0;
+    var avail=window.innerHeight-Math.min(top,window.innerHeight*0.45)-nav-16;
+    wrap.style.height=Math.round(Math.max(320,Math.min(avail,window.innerWidth>=900?Math.max(520,window.innerHeight*0.78):9999)))+'px';
+  }else wrap.style.height=Math.max(240,Math.min(Math.round(cw*H/W)+2,Math.round(window.innerHeight*0.64)))+'px';
   var ch=wrap.clientHeight||400;
   var s0=Math.min(cw/W,ch/H);var dw=Math.round(W*s0),dh=Math.round(H*s0);
   if(MAPV.mapId!==map._id){MAPV.mapId=map._id;MAPV.fit=true;}
-  if(MAPV.fit){MAPV.z=1;MAPV.x=Math.round((cw-dw)/2);MAPV.y=Math.round((ch-dh)/2);MAPV.fit=false;}
+  if(MAPV.fit){
+    MAPV.z=1;MAPV.x=Math.round((cw-dw)/2);MAPV.y=Math.round((ch-dh)/2);
+    var L=map.lots||[];
+    if(L.length&&MAPV.fit!=='all'&&!MAPV.edit){   // frame the marked lots, with a margin
+      var x0=Math.min.apply(null,L.map(function(l){return l.x;})),y0=Math.min.apply(null,L.map(function(l){return l.y;}));
+      var x1=Math.max.apply(null,L.map(function(l){return l.x+l.w;})),y1=Math.max.apply(null,L.map(function(l){return l.y+l.h;}));
+      var bw=(x1-x0)*dw,bh=(y1-y0)*dh,pad=0.86,bottomRoom=wrap.classList.contains('big')?70:0;
+      var z=Math.max(1,Math.min(6,Math.min(cw*pad/bw,(ch-bottomRoom-60)*pad/bh)));
+      // on a phone, zoom in until lot numbers are readable (typical lot about 34px wide), then centre on
+      // the lots assigned to you if you have any, otherwise on all the lots
+      var ws=L.map(function(l){return l.w*dw;}).sort(function(a,b){return a-b;}),med=ws[Math.floor(ws.length/2)]||1;
+      var cx=(x0+x1)/2,cy=(y0+y1)/2,my=myLotKeys(map),ml=L.filter(function(l){return my[smLotKey(map._id,l)];});
+      if(med*z<34){
+        z=Math.min(4,34/med);
+        if(ml.length){cx=ml.reduce(function(a,l){return a+l.x+l.w/2;},0)/ml.length;cy=ml.reduce(function(a,l){return a+l.y+l.h/2;},0)/ml.length;}
+      }
+      MAPV.z=z;MAPV.x=cw/2-cx*dw*z;MAPV.y=(ch-bottomRoom+50)/2-cy*dh*z;
+    }
+    MAPV.fit=false;
+  }
   var byLot=mapWOs(map);
   var stage=document.createElement('div');stage.className='mapstage';stage.style.width=dw+'px';stage.style.height=dh+'px';
+  var mine=myLotKeys(map);
   var rects=(map.lots||[]).map(function(l,i){
-    var st=lotStage(byLot,l,map),dim=SV.stage&&st!==SV.stage,ms=isMasterLot(map,l);
+    var key=smLotKey(map._id,l),st=lotStage(byLot,l,map),ms=isMasterLot(map,l),my=!!mine[key],sel=SV.sel===key&&!MAPV.edit;
+    var dim=(SV.stage&&st!==SV.stage)||(SV.mine&&!my);
     var c=MAPV.edit?{fill:'rgba(59,130,246,0.3)',stroke:'#2563eb'}:stageOf(st);   // the master lot keeps its progress colour and gets a gold outline and star
-    var x=l.x*dw,y=l.y*dh,w=l.w*dw,hh=l.h*dh;
-    return '<rect class="lot" data-i="'+i+'" x="'+x+'" y="'+y+'" width="'+w+'" height="'+hh+'" rx="2" fill="'+c.fill+'" stroke="'+(ms&&!MAPV.edit?MASTER_FILL.stroke:c.stroke)+'" stroke-width="'+(ms&&!MAPV.edit?3:2)+'" opacity="'+(dim?0.2:1)+'"><title>'+h(smJobLabel(l)+' · '+stageOf(st).label)+'</title></rect>'
-      +(ms&&w>14&&hh>10?'<text x="'+(x+w-3)+'" y="'+(y+10)+'" text-anchor="end" font-size="'+Math.min(10,hh*0.3)+'" font-weight="900" fill="#fde047" stroke="#713f12" stroke-width="0.6" pointer-events="none">★</text>':'');
+    var ld=D.lotData[key]||{},flags=(ld.flags||[]).filter(function(f){return !f.resolved;}).length;
+    var x=l.x*dw,y=l.y*dh,w=l.w*dw,hh=l.h*dh,fs=Math.max(6,Math.min(14,Math.min(w,hh)*0.38));
+    var label=String(l.num==null?'':l.num)+(l.unit?'-'+l.unit:'');
+    var out='<rect class="lot'+(sel?' sel':'')+'" data-i="'+i+'" x="'+x+'" y="'+y+'" width="'+w+'" height="'+hh+'" rx="2" fill="'+c.fill+'" stroke="'+(sel?'#111827':ms&&!MAPV.edit?MASTER_FILL.stroke:c.stroke)+'" stroke-width="'+(sel?3.5:ms&&!MAPV.edit?3:2)+'" opacity="'+(dim?0.18:1)+'"><title>'+h(smJobLabel(l)+' · '+stageOf(st).label)+'</title></rect>';
+    if(my&&!MAPV.edit)out+='<rect x="'+(x+2.5)+'" y="'+(y+2.5)+'" width="'+Math.max(0,w-5)+'" height="'+Math.max(0,hh-5)+'" rx="1.5" fill="none" stroke="#111827" stroke-width="1.1" stroke-dasharray="3 2" opacity="'+(dim?0.18:1)+'" pointer-events="none"/>';
+    if(w>=10&&hh>=9&&label)out+='<text class="lotnum" x="'+(x+w/2)+'" y="'+(y+hh/2)+'" font-size="'+fs+'" opacity="'+(dim?0.35:1)+'" pointer-events="none">'+h(label)+'</text>';
+    if(ms&&w>14&&hh>10)out+='<text x="'+(x+w-3)+'" y="'+(y+10)+'" text-anchor="end" font-size="'+Math.min(10,hh*0.3)+'" font-weight="900" fill="#fde047" stroke="#713f12" stroke-width="0.6" pointer-events="none">★</text>';
+    if(flags&&!MAPV.edit){var r=Math.max(3.5,Math.min(6,Math.min(w,hh)*0.16));out+='<g pointer-events="none" opacity="'+(dim?0.35:1)+'"><circle cx="'+(x+r+1)+'" cy="'+(y+r+1)+'" r="'+r+'" fill="#dc2626" stroke="#fff" stroke-width="1.2"/><text x="'+(x+r+1)+'" y="'+(y+r+1)+'" font-size="'+(r*1.5)+'" class="flagmark">!</text></g>';}
+    return out;
   }).join('');
   stage.innerHTML='<img src="'+map.imageData+'" alt="Site plan for '+h(map.name||map.site||'')+'" width="'+dw+'" height="'+dh+'" draggable="false">'
     +'<svg width="'+dw+'" height="'+dh+'" viewBox="0 0 '+dw+' '+dh+'"><g id="lotsG">'+rects+'</g><rect id="drawRect" x="0" y="0" width="0" height="0" fill="rgba(34,197,94,0.15)" stroke="#16a34a" stroke-width="2" stroke-dasharray="5 3" display="none"/></svg>';
@@ -321,7 +377,7 @@ function mapZoom(f,cx,cy){
   var nz=Math.max(0.5,Math.min(8,MAPV.z*f));
   MAPV.x=cx-(cx-MAPV.x)*(nz/MAPV.z);MAPV.y=cy-(cy-MAPV.y)*(nz/MAPV.z);MAPV.z=nz;applyMapTransform();
 }
-function mapFit(){MAPV.fit=true;renderScreen();}
+function mapFit(){MAPV.fit=(MAPV._lastFit==='lots')?'all':true;MAPV._lastFit=MAPV.fit===true?'lots':'all';renderScreen();}
 function bindMapGestures(wrap){
   if(wrap._bound)return;wrap._bound=true;
   var pts={},start=null,pinch=null,moved=false,draw=null;
@@ -329,6 +385,8 @@ function bindMapGestures(wrap){
   function toStage(p){return {x:(p.x-MAPV.x)/MAPV.z,y:(p.y-MAPV.y)/MAPV.z};}
   wrap.addEventListener('pointerdown',function(ev){
     if(ev.target.closest('.zoom'))return;
+    if(ev.target.closest('.lotcard')||ev.target.closest('.mapfind')||ev.target.closest('.maplegend button'))return;
+    var hint=document.getElementById('mapHint');if(hint){hint.remove();try{localStorage.setItem('ea_maphint','1');}catch(e){}}
     wrap.setPointerCapture(ev.pointerId);pts[ev.pointerId]=local(ev);
     var ids=Object.keys(pts);moved=false;
     if(ids.length===1){
@@ -365,15 +423,77 @@ function bindMapGestures(wrap){
         }
       }else if(had&&!moved&&start&&start.target&&start.target.closest){
         var rect=start.target.closest('rect.lot');
-        if(rect&&_mapCtx){var lot=(_mapCtx.map.lots||[])[+rect.dataset.i];if(lot)App.openLot(_mapCtx.map._id,smLotKey(_mapCtx.map._id,lot));}
+        if(rect&&_mapCtx){var lot=(_mapCtx.map.lots||[])[+rect.dataset.i];if(lot){if(MAPV.edit)App.openLot(_mapCtx.map._id,smLotKey(_mapCtx.map._id,lot));else App.selLot(smLotKey(_mapCtx.map._id,lot));}}
+        else if(!rect&&SV.sel&&!MAPV.edit)App.selLot(null);
       }
       start=null;pinch=null;draw=null;
     }else if(Object.keys(pts).length===1){var id=Object.keys(pts)[0];start={p:pts[id],x:MAPV.x,y:MAPV.y,target:null};pinch=null;moved=true;}
   }
   wrap.addEventListener('pointerup',end);wrap.addEventListener('pointercancel',end);
-  wrap.addEventListener('wheel',function(ev){ev.preventDefault();var p=local(ev);mapZoom(ev.deltaY<0?1.15:1/1.15,p.x,p.y);},{passive:false});
+  wrap.addEventListener('wheel',function(ev){if(ev.target.closest('.lotcard'))return;ev.preventDefault();var p=local(ev);mapZoom(ev.deltaY<0?1.15:1/1.15,p.x,p.y);},{passive:false});
 }
 window.addEventListener('resize',function(){if(document.getElementById('mapMount')){MAPV.fit=true;renderScreen();}});
+
+/* ───────────────────────── quick lot card (tap a lot on the map) ───────────────────────── */
+App.selLot=function(key){
+  SV.sel=key||null;
+  if(!_mapCtx)return renderScreen();
+  // redraw just the lot outlines so the selected one stands out, then the card
+  var map=_mapCtx.map;_mapCtx.stage.remove();_mapCtx=null;
+  var wrap=document.getElementById('mapMount');if(wrap){mountMap(wrap,map);renderLotCard(map);}
+};
+function lotNextStep(p){
+  if(!p.measure)return {act:'measure',label:'Start measure sheet'};
+  if(!p.rough)return {act:'wo:rough',label:'Rough-in work order'};
+  if(!p.bsmt)return {act:'wo:bsmt',label:'Basement work order'};
+  return null;
+}
+function renderLotCard(map){
+  var el=document.getElementById('lotCard');if(!el)return;
+  var f=SV.sel&&findLot(map._id,SV.sel);
+  var wrapEl=document.getElementById('mapMount');if(wrapEl)wrapEl.classList.toggle('carded',!!f);
+  if(!f){el.hidden=true;el.innerHTML='';return;}
+  var lot=f.lot,byLot=mapWOs(map),p=lotProgress(byLot,lot,map),st=stageOf(lotStage(byLot,lot,map));
+  var ld=D.lotData[SV.sel]||{},flags=(ld.flags||[]).filter(function(x){return !x.resolved;});
+  var step=function(done,label,why){return '<span class="step'+(done?' done':'')+'" title="'+h(why||'')+'"><i>'+(done?'✓':'')+'</i>'+label+'</span>';};
+  var next=lotNextStep(p),wos=lotWOsFrom(byLot,lot).filter(function(w){return !w._pendingEdit;});
+  el.innerHTML='<div class="lc-top"><div class="lc-title"><span class="sw" style="background:'+st.c+'"></span><b>'+h(smJobLabel(lot))+'</b>'+(lot.model?'<span class="s">'+h(lot.model)+'</span>':'')+'</div>'
+      +'<button class="lc-x" aria-label="Close" onclick="App.selLot(null)">×</button></div>'
+    +'<div class="lc-steps">'+step(p.measure,'Measure',p.auto.measure)+step(p.rough,'Rough-in',p.auto.rough_in)+step(p.bsmt,'Basement',p.auto.basement)+step(p.tie,'Tie-in',p.auto.tie_ins)+'</div>'
+    +(flags.length?'<button class="lc-flag" onclick="App.lotAct(\'open\')">⚑ '+h(flags[0].text||'Open flag')+(flags.length>1?' (+'+(flags.length-1)+' more)':'')+'</button>':'')
+    +(next?'<button class="btn wide" onclick="App.lotAct(\''+next.act+'\')">'+h(next.label)+'</button>':'<p class="s lc-done">All main steps are done on this lot.</p>')
+    +'<div class="lc-acts">'
+      +(next&&next.act!=='wo:rough'&&next.act!=='wo:bsmt'||!next?'<button onclick="App.lotAct(\'wo\')">Work order</button>':'')
+      +'<button onclick="App.lotAct(\'flag\')">Add flag</button>'
+      +(isAdm()?'<button onclick="App.lotAct(\'upload\')">Upload</button>':'')
+      +'<button onclick="App.lotAct(\'open\')">Lot details ›</button></div>';
+  el.hidden=false;
+}
+App.lotAct=function(act){
+  var map=_mapCtx&&_mapCtx.map||D.maps.find(function(m){return m._id===SV.mapId;});var f=map&&SV.sel&&findLot(map._id,SV.sel);if(!f)return;
+  var lot=f.lot,key=SV.sel;
+  if(act==='open')return App.openLot(map._id,key);
+  if(act==='wo')return openNewWOForLot(map,lot);
+  if(act.indexOf('wo:')===0)return openNewWOForLot(map,lot,act.slice(3));
+  if(act==='measure')return openMeasureForLot(map,lot);
+  if(act==='flag')return push({type:'addFlag',key:key,d:{type:'unfinished',text:'',materials:''}});
+  if(act==='upload')return App.uploadDoc({builder:map.builder||'',site:map.site||'',lot:String(lot.num||''),mapId:map._id});
+};
+/* Find a lot by number ("24", "3-24" for block 3 lot 24, "24-2" for unit 2) and zoom to it */
+App.findLot=function(q){
+  q=String(q||'').trim().toLowerCase().replace(/^lot\s*/,'');if(!q||!_mapCtx)return;
+  var map=_mapCtx.map,lots=map.lots||[];
+  var norm=function(v){return String(v==null?'':v).trim().toLowerCase();};
+  var hits=lots.filter(function(l){return norm(l.num)===q;});
+  if(!hits.length){var m=q.match(/^([a-z0-9]+)\s*[-\s]\s*([a-z0-9]+)$/);if(m)hits=lots.filter(function(l){return (norm(l.block)===m[1]&&norm(l.num)===m[2])||(norm(l.num)===m[1]&&norm(l.unit)===m[2]);});}
+  if(!hits.length){showToast('No lot '+q+' on this plan.',true);return;}
+  var l=hits[0],c=_mapCtx,cw=c.wrap.clientWidth,ch=c.wrap.clientHeight;
+  var z=Math.max(MAPV.z,Math.min(5,60/(l.w*c.dw)));   // zoom in until the lot is about 60px wide (never zooms out)
+  MAPV.z=z;MAPV.x=cw/2-(l.x+l.w/2)*c.dw*z;MAPV.y=ch*0.38-(l.y+l.h/2)*c.dh*z;
+  if(hits.length>1)showToast(hits.length+' lots numbered '+q+'. Showing '+smJobLabel(l)+'. Type block-lot, like 3-'+q+'.');
+  var inp=document.querySelector('.mapfind input');if(inp)inp.blur();
+  App.selLot(smLotKey(map._id,l));
+};
 
 /* ───────────────────────── mark a new lot (admin) ───────────────────────── */
 App.newLot=function(mapId,rect){push({type:'newLot',mapId:mapId,rect:rect,d:{block:'',num:'',unit:'',model:''}});};
@@ -728,3 +848,37 @@ App.saveDoc=async function(){
 // Stop a file dropped outside a drop zone from opening in the browser and leaving the portal.
 document.addEventListener('dragover',function(ev){if(ev.dataTransfer&&Array.prototype.indexOf.call(ev.dataTransfer.types||[],'Files')>=0)ev.preventDefault();});
 document.addEventListener('drop',function(ev){if(ev.dataTransfer&&ev.dataTransfer.files&&ev.dataTransfer.files.length)ev.preventDefault();});
+
+
+/* ───────────────────────── Home: your sites, as small live maps ───────────────────────── */
+function miniMap(map){
+  var L=map.lots||[],W=map.imageWidth||1200,H=map.imageHeight||800;
+  if(!map.imageData||!L.length)return '<span class="minimap empty">'+svg('map')+'</span>';
+  var x0=Math.min.apply(null,L.map(function(l){return l.x;})),y0=Math.min.apply(null,L.map(function(l){return l.y;}));
+  var x1=Math.max.apply(null,L.map(function(l){return l.x+l.w;})),y1=Math.max.apply(null,L.map(function(l){return l.y+l.h;}));
+  var px=(x1-x0)*0.08,py=(y1-y0)*0.12;x0=Math.max(0,x0-px);y0=Math.max(0,y0-py);x1=Math.min(1,x1+px);y1=Math.min(1,y1+py);
+  var byLot=mapWOs(map),mine=myLotKeys(map);
+  var rects=L.map(function(l){var st=stageOf(lotStage(byLot,l,map)),my=mine[smLotKey(map._id,l)];
+    return '<rect x="'+l.x*W+'" y="'+l.y*H+'" width="'+l.w*W+'" height="'+l.h*H+'" fill="'+st.fill+'" stroke="'+(my?'#111827':st.stroke)+'" stroke-width="'+(my?W/220:W/500)+'"/>';}).join('');
+  return '<svg class="minimap" viewBox="'+[x0*W,y0*H,(x1-x0)*W,(y1-y0)*H].join(' ')+'" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><image href="'+map.imageData+'" x="0" y="0" width="'+W+'" height="'+H+'"/>'+rects+'</svg>';
+}
+function homeSites(){
+  var idx=buildSites(),last=null;try{last=JSON.parse(localStorage.getItem('ea_lastSite')||'null');}catch(e){}
+  var list=Object.values(idx).filter(function(s){return s.maps.some(function(m){return !m._closed&&(m.lots||[]).length;});});
+  if(!list.length)return '';
+  var info=list.map(function(s){
+    var map=s.maps.find(function(m){return !m._closed&&(m.lots||[]).length;}),byLot=mapWOs(map),lots=map.lots||[],cnt={};
+    STAGES.forEach(function(x){cnt[x.k]=0;});lots.forEach(function(l){cnt[lotStage(byLot,l,map)]++;});
+    var mine=Object.keys(myLotKeys(map)).length,flags=siteFlags(s),ready=siteReady(s).length;
+    var score=(last&&last.key===s.key?1000:0)+mine*10+flags+ready;
+    return {s:s,map:map,cnt:cnt,n:lots.length,mine:mine,flags:flags,ready:ready,score:score};
+  }).sort(function(a,b){return b.score-a.score||a.s.site.localeCompare(b.s.site);});
+  var show=info.slice(0,isAdm()?4:3);
+  return '<div class="blk"><div class="blk-h"><h2>Sites</h2>'+(info.length>show.length?'<button class="link" onclick="App.tab(\'sites\')">All '+info.length+'</button>':'')+'</div><div class="site-tiles">'
+    +show.map(function(x){
+      var bar=STAGES.map(function(st){return x.n?'<span style="width:'+(x.cnt[st.k]/x.n*100)+'%;background:'+st.c+'"></span>':'';}).join('');
+      var tags=(x.mine?'<span class="pill info">'+pl(x.mine,'lot')+' for you</span>':'')+(x.flags?'<span class="pill bad">'+pl(x.flags,'flag')+'</span>':'')+(isAdm()&&x.ready?'<span class="pill warn">'+x.ready+' to invoice</span>':'');
+      return '<button class="site-tile" onclick="App.openSite(R('+reg(x.s.key)+'),R('+reg(x.s.builder)+'))">'+miniMap(x.map)
+        +'<span class="st-body"><b>'+h(x.s.site)+'</b><span class="s">'+h(x.s.builder)+' · '+pl(x.n,'lot')+'</span><span class="bar">'+bar+'</span>'+(tags?'<span class="strip">'+tags+'</span>':'')+'</span></button>';
+    }).join('')+'</div></div>';
+}

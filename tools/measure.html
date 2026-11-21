@@ -1608,7 +1608,12 @@ window.addEventListener('message',async function(e){
   const msg=e.data;
 
   if(msg.type==='RESTORE_FORM'){
-    if(msg.data) doLoad(msg.data);
+    var _r=msg.data;
+    if(_r&&(_r.fields||_r.items)) doLoad(_r);
+    else if(_r){ // plain field values (e.g. the lot a master is being used for)
+      Object.keys(_r).forEach(function(k){var el=document.getElementById(k);if(el&&_r[k]!=null&&String(_r[k])!=='')el.value=_r[k];});
+      try{render();}catch(x){}
+    }
   }
 
   if(msg.type==='LOAD_MASTER'){

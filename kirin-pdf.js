@@ -146,7 +146,14 @@ window.eaKirinPDF=async function(data,opts){
   var V=function(it,k){return String(it[k]==null?'':it[k]).replace(/["”″]/g,'').trim();};
   // slot kinds: where on the form each kind lives, and which clean cell to copy for extras
   var KINDS={
-    pto:{slots:[[0,0],[0,1],[0,2],[0,3],[0,4],[0,5]],srcC:[0,3],draw:function(C,it,q){
+    // Rise PTO -> the three FIT boxes marked RISER; Flat PTO -> the three plain FIT boxes below them.
+    // When a kind runs out, an extra copy of its own box is added (so a flat PTO never shows RISER).
+    pto:{slots:[[0,0],[0,1],[0,2]],srcC:[0,0],draw:function(C,it,q){
+      dims(C,88.2,41,V(it,'v1'),V(it,'v2'));
+      var side=/wide/i.test(it.v3)?'WS':/narrow/i.test(it.v3)?'NS':'';
+      if(side)txt(C,side,6.7,44,9,false);
+      qtyMark(C,q,40,48);}},
+    flatpto:{slots:[[0,3],[0,4],[0,5]],srcC:[0,3],draw:function(C,it,q){
       dims(C,88.2,41,V(it,'v1'),V(it,'v2'));
       var side=/wide/i.test(it.v3)?'WS':/narrow/i.test(it.v3)?'NS':'';
       if(side)txt(C,side,6.7,44,9,false);
@@ -175,7 +182,7 @@ window.eaKirinPDF=async function(data,opts){
     rab:{slots:[[3,0]],srcC:[3,0],draw:function(C,it,q){txt(C,[V(it,'v1'),V(it,'v2')].filter(Boolean).join('x'),80,52,10,true);qtyMark(C,q,30,45);}}
   };
   var kindOf=function(it){var t=it.vType||'';
-    if(/PTO$/.test(t))return 'pto';if(t==='Y-Branch'||t==='Stack Y'||t==='Zoning Y')return 'y';if(t==='Semi-Y')return 'semiy';
+    if(t==='Flat PTO')return 'flatpto';if(/PTO$/.test(t))return 'pto';if(t==='Y-Branch'||t==='Stack Y'||t==='Zoning Y')return 'y';if(t==='Semi-Y')return 'semiy';
     if(t==='Riser')return 'riser';if(/^Taper/.test(t))return 'taper';if(/90$/.test(t))return 'elbow';if(t==='RA Boot')return 'rab';return null;};
   var used={},extras=[],noPic=[];
   var placeKind=function(k,it){var K=KINDS[k],q=parseInt(it.qty,10)||1;used[k]=used[k]||0;
@@ -184,7 +191,7 @@ window.eaKirinPDF=async function(data,opts){
   d.fittings.forEach(function(it){
     var k=kindOf(it);if(!k){noPic.push(fitText(it));return;}
     placeKind(k,it);
-    if(k==='pto')placeKind('vd',it);   // every PTO gets a VD the same size
+    if(k==='pto'||k==='flatpto')placeKind('vd',it);   // every PTO gets a VD the same size
   });
   // extra pictures: copy a clean cell from Kirin's form, then fill it the same way
   var srcBox=function(k){var c=KINDS[k].srcC,C=cell(c[0],c[1]);return {left:C.x,right:C.x+C.w,top:H-C.y,bottom:H-(C.y+C.h)};};
